@@ -1,0 +1,7 @@
+[core]
+    no_scm = True
+    remote = supabase
+['remote "supabase"']
+    url = s3://weather-mlops-dvc
+    endpointurl = https://fgxgenjxslytnqygpefk.storage.supabase.co/storage/v1/s3
+    region = eu-west-1

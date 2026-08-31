@@ -3,25 +3,30 @@ name = "jul26-bmlops-int-weather"
 version = "0.1.0"
 description = "End-to-end MLOps project for Australian rainfall prediction"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.13,<3.14"
 dependencies = [
-    "fastapi>=0.141.1",
+    "dvc>=3.65.0",
+    "dvc-s3>=3.2.0",
     "joblib>=1.5.3",
-    "kaggle>=2.2.4",
     "numpy>=2.5.2",
-    "pandas>=3.0.5",
+    "pandas>=2.3.0,<3",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.15.0",
     "python-dotenv>=1.2.3",
     "requests>=2.34.2",
     "scikit-learn>=1.9.0",
     "supabase>=2.31.0",
-    "uvicorn[standard]>=0.52.4",
+    "xgboost>=3.0.0",
 ]
+
+[project.scripts]
+weather-predict = "weather_mlops.models.predict:main"
+weather-preprocess = "weather_mlops.data.preprocess:main"
+weather-train = "weather_mlops.models.training:main"
+weather-version-data = "weather_mlops.data.versioning:main"
 
 [dependency-groups]
 dev = [
-    "httpx>=0.28.1",
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
     "ruff>=0.16.4",

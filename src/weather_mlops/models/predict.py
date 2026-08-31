@@ -1,4 +1,7 @@
+import argparse
+import json
 from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 import joblib
@@ -34,3 +37,34 @@ def predict(features: dict[str, Any]) -> dict[str, Any]:
         "rain_tomorrow": bool(predicted_class),
         "probability": probability,
     }
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run rainfall prediction for one observation.")
+    parser.add_argument(
+        "--input-json",
+        type=Path,
+        required=True,
+        help="Path to a JSON file containing one feature dictionary.",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=settings.sample_prediction_output_path,
+        help="Path where the prediction JSON will be written.",
+    )
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    features: dict[str, Any] = json.loads(args.input_json.read_text(encoding="utf-8"))
+    prediction = predict(features)
+
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps(prediction, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(prediction, indent=2))
+
+
+if __name__ == "__main__":
+    main()

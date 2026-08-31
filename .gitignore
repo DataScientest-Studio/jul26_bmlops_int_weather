@@ -8,6 +8,7 @@ __pycache__/
 # Distribution / packaging
 .Python
 env/
+.venv/
 build/
 develop-eggs/
 dist/
@@ -39,6 +40,8 @@ htmlcov/
 .coverage
 .coverage.*
 .cache
+.pytest_cache/
+.ruff_cache/
 nosetests.xml
 coverage.xml
 *.cover
@@ -56,8 +59,9 @@ docs/_build/
 # PyBuilder
 target/
 
-# DotEnv configuration
+# Local environment secrets
 .env
+.env.local
 
 # Database
 *.db
@@ -75,8 +79,15 @@ target/
 # Jupyter NB Checkpoints
 .ipynb_checkpoints/
 
-# exclude data from source control by default
-/data/
+# Exclude generated artifacts from source control. DVC tracks these instead.
+/data/dvc/
+/data/metadata/
+/data/predictions/
+/data/raw/*
+!/data/raw/*.dvc
+/data/processed/*
+/models/*.joblib
+/reports/metrics/
 
 # Mac OS-specific storage files
 .DS_Store
@@ -87,3 +98,11 @@ target/
 
 # Mypy cache
 .mypy_cache/
+
+# DVC's no-SCM cache/runtime files are local, but config is shared.
+.dvc/*
+!.dvc/config
+.dvc/config.local
+
+# Local uv cache used in restricted environments.
+.uv-cache/
