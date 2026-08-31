@@ -20,7 +20,7 @@ This document summarizes the guidelines provided by the mentor for the **MLOps p
 
 ### Phase 1: Foundations — Deadline: Sep 4
 - Define project objectives and key metrics.      // Jonathan
-- Set up a reproducible development environment.  // Ziad
+- ✅ Set up a reproducible development environment.  // Ziad — DONE 2026-08-31
 - Collect and preprocess data:
   - ✅ Create a database (SQL or NoSQL).              // Supabase - Gabriel — DONE 2026-08-31
     - Supabase project: `fgxgenjxslytnqygpefk` (eu-west-1), Postgres 17
@@ -28,9 +28,9 @@ This document summarizes the guidelines provided by the mentor for the **MLOps p
     - Schema: `public.weather_observations`, `predictions`, `model_versions`, `drift_reports` (see `supabase/schema.sql`)
     - Access: invite users via Supabase Auth (`Authentication → Users`); `service_role` key for server-side only
     - Migrations tracked in `supabase/migrations/`; apply via `supabase db push` after `supabase link`
-  - Store the data with a one-time-run Python script. // Update the scripts to store in the DB - Ziad
+  - ✅ Store the data with a one-time-run Python script. // Update the scripts to store in the DB - Ziad — DONE 2026-08-31
 - Build and evaluate a baseline ML model:
-  - Create 2 Python scripts: `training.py` and `predict.py`. // XGBoost - Ziad
+  - ✅ Create 2 Python scripts: `training.py` and `predict.py`. // XGBoost - Ziad — DONE 2026-08-31
 - Implement a basic inference API:
   - Create 2 endpoints: `training/` and `predict/`. // Gabriel + Thomas
 
@@ -43,7 +43,7 @@ This document summarizes the guidelines provided by the mentor for the **MLOps p
 - Split the application into Docker-based microservices with simple orchestration using `docker-compose`. // Gabriel
 - Develop automatic model and component updates: // Gabriel + Ziad
   - Scheduled training: cron script, Jenkins, or Airflow (recommended but more complex). // Thomas - Airflow
-- Use **DVC** (without Git) to version datasets and store their hashes in MLflow. // Ziad
+- ✅ Use **DVC** (without Git) to version datasets. // Ziad — DONE 2026-08-31; MLflow hash logging deferred to the later MLflow stage
 - **(OPTIONAL)** Implement unit tests.
 - **(OPTIONAL)** CI/CD pipeline with GitHub Actions: (Recommendation: only master branch)
   - `ci.yaml` (always): Linter + Unit tests + Build Docker images.
