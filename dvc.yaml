@@ -1,0 +1,74 @@
+stages:
+  version_raw:
+    cmd: python -m weather_mlops.data.versioning --input data/raw/weatherAUS.csv --output data/metadata/weatherAUS.json
+    deps:
+      - data/raw/weatherAUS.csv
+      - src/weather_mlops/data/versioning.py
+      - src/weather_mlops/config/settings.py
+    outs:
+      - data/metadata/weatherAUS.json
+
+  preprocess:
+    cmd: python -m weather_mlops.data.preprocess --input data/raw/weatherAUS.csv --output-dir data/processed --train-fraction ${data.train_fraction} --validation-fraction ${data.validation_fraction}
+    deps:
+      - data/raw/weatherAUS.csv
+      - src/weather_mlops/data/preprocess.py
+      - src/weather_mlops/config/settings.py
+    params:
+      - data.train_fraction
+      - data.validation_fraction
+    outs:
+      - data/processed/X_train.csv
+      - data/processed/X_validation.csv
+      - data/processed/X_test.csv
+      - data/processed/y_train.csv
+      - data/processed/y_validation.csv
+      - data/processed/y_test.csv
+
+  train:
+    cmd: python -m weather_mlops.models.training --x-train data/processed/X_train.csv --y-train data/processed/y_train.csv --model-output models/rain_classifier.joblib --metrics-output reports/metrics/train.json --n-estimators ${model.n_estimators} --max-depth ${model.max_depth} --learning-rate ${model.learning_rate} --subsample ${model.subsample} --colsample-bytree ${model.colsample_bytree}
+    deps:
+      - data/processed/X_train.csv
+      - data/processed/y_train.csv
+      - src/weather_mlops/data/preprocess.py
+      - src/weather_mlops/models/evaluation.py
+      - src/weather_mlops/models/training.py
+      - src/weather_mlops/config/settings.py
+    params:
+      - model
+    outs:
+      - models/rain_classifier.joblib
+    metrics:
+      - reports/metrics/train.json
+
+  validate:
+    cmd: python -m weather_mlops.models.evaluation --x-data data/processed/X_validation.csv --y-data data/processed/y_validation.csv --model-path models/rain_classifier.joblib --metrics-output reports/metrics/validation.json --split-name validation
+    deps:
+      - data/processed/X_validation.csv
+      - data/processed/y_validation.csv
+      - models/rain_classifier.joblib
+      - src/weather_mlops/models/evaluation.py
+      - src/weather_mlops/config/settings.py
+    metrics:
+      - reports/metrics/validation.json
+
+  evaluate:
+    cmd: python -m weather_mlops.models.evaluation --x-data data/processed/X_test.csv --y-data data/processed/y_test.csv --model-path models/rain_classifier.joblib --metrics-output reports/metrics/evaluation.json --split-name test
+    deps:
+      - data/processed/X_test.csv
+      - data/processed/y_test.csv
+      - models/rain_classifier.joblib
+      - src/weather_mlops/models/evaluation.py
+      - src/weather_mlops/config/settings.py
+    metrics:
+      - reports/metrics/evaluation.json
+
+  predict_sample:
+    cmd: python -m weather_mlops.models.predict --input-json sample_prediction.json --output data/predictions/sample_prediction.json
+    deps:
+      - sample_prediction.json
+      - models/rain_classifier.joblib
+      - src/weather_mlops/models/predict.py
+      - src/weather_mlops/config/settings.py
+    outs:
+      - data/predictions/sample_prediction.json

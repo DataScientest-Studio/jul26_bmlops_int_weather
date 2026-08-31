@@ -30,7 +30,7 @@ This document summarizes the guidelines provided by the mentor for the **MLOps p
     - Migrations tracked in `supabase/migrations/`; apply via `supabase db push` after `supabase link`
   - Store the data with a one-time-run Python script. // Update the scripts to store in the DB - Ziad
 - Build and evaluate a baseline ML model:
-  - Create 2 Python scripts: `training.py` and `predict.py`. // XGBoost - Ziad 
+  - Create 2 Python scripts: `training.py` and `predict.py`. // XGBoost - Ziad
 - Implement a basic inference API:
   - Create 2 endpoints: `training/` and `predict/`. // Gabriel + Thomas
 
@@ -45,11 +45,11 @@ This document summarizes the guidelines provided by the mentor for the **MLOps p
   - Scheduled training: cron script, Jenkins, or Airflow (recommended but more complex). // Thomas - Airflow
 - Use **DVC** (without Git) to version datasets and store their hashes in MLflow. // Ziad
 - **(OPTIONAL)** Implement unit tests.
-- **(OPTIONAL)** CI/CD pipeline with GitHub Actions: (Recommendation: only master branch) 
+- **(OPTIONAL)** CI/CD pipeline with GitHub Actions: (Recommendation: only master branch)
   - `ci.yaml` (always): Linter + Unit tests + Build Docker images.
   - `release.yaml` (only on master): Linter + Unit tests + Build & deploy images to Docker Hub.
 - **(OPTIONAL)** Optimize and secure the API (basic auth or OAuth2). // Gabriel + Ziad = [NGINX] - Sprint 1 API security module - review the slides from master class - check optional course
-- **(OPTIONAL)** Implement scalability with Kubernetes. // Thomas 
+- **(OPTIONAL)** Implement scalability with Kubernetes. // Thomas
 
 ### Phase 3: Monitoring & Maintenance — Deadline: Oct 2
 - Implement drift detection with **Evidently** in the Airflow pipeline:
