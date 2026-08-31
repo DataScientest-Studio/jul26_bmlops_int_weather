@@ -22,8 +22,13 @@ This document summarizes the guidelines provided by the mentor for the **MLOps p
 - Define project objectives and key metrics.      // Jonathan
 - Set up a reproducible development environment.  // Ziad
 - Collect and preprocess data:
-  - Create a database (SQL or NoSQL).              // Supabase - Gabriel
-  - Store the data with a one-time-run Python script. // Update the scripts to store in the DB - Ziad 
+  - ✅ Create a database (SQL or NoSQL).              // Supabase - Gabriel — DONE 2026-08-31
+    - Supabase project: `fgxgenjxslytnqygpefk` (eu-west-1), Postgres 17
+    - DB host: `db.fgxgenjxslytnqygpefk.supabase.co:5432`
+    - Schema: `public.weather_observations`, `predictions`, `model_versions`, `drift_reports` (see `supabase/schema.sql`)
+    - Access: invite users via Supabase Auth (`Authentication → Users`); `service_role` key for server-side only
+    - Migrations tracked in `supabase/migrations/`; apply via `supabase db push` after `supabase link`
+  - Store the data with a one-time-run Python script. // Update the scripts to store in the DB - Ziad
 - Build and evaluate a baseline ML model:
   - Create 2 Python scripts: `training.py` and `predict.py`. // XGBoost - Ziad 
 - Implement a basic inference API:
