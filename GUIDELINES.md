@@ -19,34 +19,34 @@ This document summarizes the guidelines provided by the mentor for the **MLOps p
 - Team kick-off (internal).
 
 ### Phase 1: Foundations — Deadline: Sep 4
-- Define project objectives and key metrics.
-- Set up a reproducible development environment.
+- Define project objectives and key metrics.      // Jonathan
+- Set up a reproducible development environment.  // Ziad
 - Collect and preprocess data:
-  - Create a database (SQL or NoSQL).
-  - Store the data with a one-time-run Python script.
+  - Create a database (SQL or NoSQL).              // Supabase - Gabriel
+  - Store the data with a one-time-run Python script. // Update the scripts to store in the DB - Ziad 
 - Build and evaluate a baseline ML model:
-  - Create 2 Python scripts: `training.py` and `predict.py`.
+  - Create 2 Python scripts: `training.py` and `predict.py`. // XGBoost - Ziad 
 - Implement a basic inference API:
-  - Create 2 endpoints: `training/` and `predict/`.
+  - Create 2 endpoints: `training/` and `predict/`. // Gabriel + Thomas
 
 ### Phase 2: Microservices, Tracking & Versioning — Deadline: Sep 20
-- Set up experiment tracking with **MLflow**:
+- Set up experiment tracking with **MLflow**: // Jonathan
   - Add MLflow logging to the training script.
   - Implement data and model versioning using the MLflow Model Registry.
   - Compare performance after each run and tag the best model in MLflow.
   - At the end of the training script (or later via Airflow), load the previous version and compare it with the newly trained model.
-- Split the application into Docker-based microservices with simple orchestration using `docker-compose`.
-- Develop automatic model and component updates:
-  - Scheduled training: cron script, Jenkins, or Airflow (recommended but more complex).
-- Use **DVC** (without Git) to version datasets and store their hashes in MLflow.
+- Split the application into Docker-based microservices with simple orchestration using `docker-compose`. // Gabriel
+- Develop automatic model and component updates: // Gabriel + Ziad
+  - Scheduled training: cron script, Jenkins, or Airflow (recommended but more complex). // Thomas - Airflow
+- Use **DVC** (without Git) to version datasets and store their hashes in MLflow. // Ziad
 - **(OPTIONAL)** Implement unit tests.
-- **(OPTIONAL)** CI/CD pipeline with GitHub Actions:
+- **(OPTIONAL)** CI/CD pipeline with GitHub Actions: (Recommendation: only master branch) 
   - `ci.yaml` (always): Linter + Unit tests + Build Docker images.
   - `release.yaml` (only on master): Linter + Unit tests + Build & deploy images to Docker Hub.
-- **(OPTIONAL)** Optimize and secure the API (basic auth or OAuth2).
-- **(OPTIONAL)** Implement scalability with Kubernetes.
+- **(OPTIONAL)** Optimize and secure the API (basic auth or OAuth2). // Gabriel + Ziad = [NGINX] - Sprint 1 API security module - review the slides from master class - check optional course
+- **(OPTIONAL)** Implement scalability with Kubernetes. // Thomas 
 
-### Phase 4: Monitoring & Maintenance — Deadline: Oct 2
+### Phase 3: Monitoring & Maintenance — Deadline: Oct 2
 - Implement drift detection with **Evidently** in the Airflow pipeline:
   - **Training**:
     - Reference dataset: historical dataset.
