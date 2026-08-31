@@ -26,6 +26,7 @@ Airflow, MLflow, monitoring, and dashboards are later stages.
 The real `.env` file is not committed because GitHub push protection blocks
 Supabase secrets. Use `.env.example` for the required variable names, then get
 the real shared values from the team chat and put them in your local `.env`.
+Do not commit `.env`.
 
 ## Repository Structure
 
@@ -116,6 +117,32 @@ The schema creates:
 - `public.dataset_versions`
 - private Storage bucket `weather-mlops-dvc`
 
+## Local Secrets
+
+The repository tracks `.env.example`, not `.env`.
+
+After pulling the branch, create your local `.env` manually:
+
+```bash
+cp .env.example .env
+```
+
+Then open `.env` and replace every placeholder with the shared Supabase values
+from the team chat. The values that must be filled manually are:
+
+- `SUPABASE_URL`
+- `SUPABASE_KEY`
+- `SUPABASE_S3_ENDPOINT`
+- `AWS_ACCESS_KEY_ID`
+- `AWS_SECRET_ACCESS_KEY`
+
+Keep the table names, DVC remote name, DVC bucket URL, region, and split
+fractions as they are unless the team intentionally changes the project setup.
+
+Do not push real `.env` values to GitHub. `.env` is ignored by Git, and
+`.dvc/config.local` is also ignored because it stores the local DVC remote
+credentials after `make dvc-config`.
+
 The tracked `.env.example` contains the required variable names:
 
 ```text
@@ -150,7 +177,7 @@ Run this from the repository root:
 ```bash
 uv sync
 cp .env.example .env
-# fill .env with the shared Supabase values from the team chat
+# manually paste the shared Supabase values into .env
 make dvc-config
 make pull
 make repro
