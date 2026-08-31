@@ -5,6 +5,7 @@ description = "End-to-end MLOps project for Australian rainfall prediction"
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
 dependencies = [
+    "cryptography>=50.0.1",
     "dvc>=3.65.0",
     "dvc-s3>=3.2.0",
     "joblib>=1.5.3",

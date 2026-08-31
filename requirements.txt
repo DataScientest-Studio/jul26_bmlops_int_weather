@@ -86,9 +86,10 @@ configobj==5.0.9
     # via dvc
 coverage==7.15.4
     # via pytest-cov
-cryptography==49.0.0
+cryptography==50.0.1
     # via
     #   asyncssh
+    #   jul26-bmlops-int-weather
     #   pyjwt
 deprecation==2.1.0
     # via

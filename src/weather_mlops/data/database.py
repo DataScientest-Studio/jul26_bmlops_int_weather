@@ -3,8 +3,8 @@ from datetime import UTC, datetime
 from typing import Any
 
 import pandas as pd
-from supabase import Client, create_client
 
+from supabase import Client, create_client
 from weather_mlops.config.settings import settings
 from weather_mlops.data.versioning import DatasetMetadata
 

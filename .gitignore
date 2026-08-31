@@ -106,3 +106,6 @@ target/
 
 # Local uv cache used in restricted environments.
 .uv-cache/
+
+# Supabase local CLI state.
+supabase/.temp/
