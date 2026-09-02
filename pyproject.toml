@@ -8,6 +8,7 @@ dependencies = [
     "cryptography>=50.0.1",
     "dvc>=3.65.0",
     "dvc-s3>=3.2.0",
+    "fastapi>=0.141.1",
     "joblib>=1.5.3",
     "numpy>=2.5.2",
     "pandas>=2.3.0,<3",
@@ -17,6 +18,7 @@ dependencies = [
     "requests>=2.34.2",
     "scikit-learn>=1.9.0",
     "supabase>=2.31.0",
+    "uvicorn>=0.52.4",
     "xgboost>=3.0.0",
 ]
 
