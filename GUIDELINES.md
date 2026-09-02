@@ -25,7 +25,7 @@ This document summarizes the guidelines provided by the mentor for the **MLOps p
   - ✅ Create a database (SQL or NoSQL).              // Supabase - Gabriel — DONE 2026-08-31
     - Supabase project: `fgxgenjxslytnqygpefk` (eu-west-1), Postgres 17
     - DB host: `db.fgxgenjxslytnqygpefk.supabase.co:5432`
-    - Schema: `public.weather_observations`, `predictions`, `model_versions`, `drift_reports` (see `supabase/schema.sql`)
+    - Schema: WeatherAUS-compatible `public.weather_observations`, `public.dataset_versions`, future `public.predictions`, `public.model_versions`, `public.drift_reports`, and the `weather-mlops-dvc` Storage bucket (see `supabase/schema.sql`)
     - Access: invite users via Supabase Auth (`Authentication → Users`); `service_role` key for server-side only
     - Migrations tracked in `supabase/migrations/`; apply via `supabase db push` after `supabase link`
   - ✅ Store the data with a one-time-run Python script. // Update the scripts to store in the DB - Ziad — DONE 2026-08-31

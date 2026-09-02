@@ -1,79 +1,93 @@
--- =========================================================
---  Weather MLOps — Supabase schema
---  Project: jul26_bmlops_int_weather
---  Source: GUIDELINES.md (Phase 1 + Phase 4 mandates)
+-- Weather MLOps Supabase schema
+-- Project: jul26_bmlops_int_weather
 --
---  Apply in Supabase SQL Editor, or via:
---    psql "$SUPABASE_DB_URL" -f supabase/schema.sql
---  Re-runnable: drops everything in `public` before recreating.
--- =========================================================
+-- This is the canonical database schema for the shared Supabase project.
+-- Apply it in the Supabase SQL Editor or via:
+--   psql "$SUPABASE_DB_URL" -f supabase/schema.sql
 
 create extension if not exists "uuid-ossp";
 
--- ---------- Phase 1: raw data ingestion ----------
--- One-time load via a Python script (per mentor brief).
--- Generic shape so Ziad can adapt columns to whichever
--- Weather dataset the team picks. Extra columns are fine.
+-- Phase 1: WeatherAUS raw data loaded by scripts/load_to_supabase.py.
 create table if not exists public.weather_observations (
-    id                bigserial    primary key,
-    observed_at       timestamptz  not null,
-    location          text         not null,         -- e.g. "Paris,FR" or station id
-    latitude          numeric(9,6),
-    longitude         numeric(9,6),
-    temperature_c     numeric(6,2),
-    humidity_pct      numeric(5,2),
-    pressure_hpa      numeric(7,2),
-    wind_speed_ms     numeric(6,2),
-    precipitation_mm  numeric(6,2),
-    cloud_cover_pct   numeric(5,2),
-    weather_code      text,                          -- provider-specific code
-    raw_payload       jsonb,                         -- original API/CSV row, untouched
-    ingested_at       timestamptz  not null default now(),
-    source            text         not null default 'unknown'
+    source_row_number integer primary key,
+    date date,
+    location text,
+    min_temp double precision,
+    max_temp double precision,
+    rainfall double precision,
+    evaporation double precision,
+    sunshine double precision,
+    wind_gust_dir text,
+    wind_gust_speed double precision,
+    wind_dir_9am text,
+    wind_dir_3pm text,
+    wind_speed_9am double precision,
+    wind_speed_3pm double precision,
+    humidity_9am double precision,
+    humidity_3pm double precision,
+    pressure_9am double precision,
+    pressure_3pm double precision,
+    cloud_9am double precision,
+    cloud_3pm double precision,
+    temp_9am double precision,
+    temp_3pm double precision,
+    rain_today text,
+    rain_tomorrow text,
+    ingested_at timestamptz not null default now(),
+    source text not null default 'weatherAUS'
 );
 
-create index if not exists idx_weather_obs_time
-    on public.weather_observations (observed_at desc);
+create index if not exists idx_weather_observations_date_location
+    on public.weather_observations (date, location);
 
-create index if not exists idx_weather_obs_location
-    on public.weather_observations (location, observed_at desc);
+create index if not exists idx_weather_observations_location
+    on public.weather_observations (location);
 
--- Unique on (source, location, observed_at) so re-runs of the
--- one-time ingestion script don't duplicate rows.
-create unique index if not exists uq_weather_obs_source_loc_time
-    on public.weather_observations (source, location, observed_at);
+-- Dataset metadata written by scripts/load_to_supabase.py.
+create table if not exists public.dataset_versions (
+    dataset_name text not null,
+    path text not null,
+    size_bytes bigint not null,
+    md5 text not null,
+    sha256 text not null,
+    created_at timestamptz not null,
+    primary key (dataset_name, sha256)
+);
 
--- ---------- MLOps glue: MLflow-synced model registry mirror ----------
--- MLflow is the source of truth; this is a local mirror for
--- joins with the predictions table and audit.
--- Defined BEFORE predictions because predictions.model_version_id FKs into it.
+-- Supabase Storage bucket used as the DVC S3-compatible remote.
+insert into storage.buckets (id, name, public)
+values ('weather-mlops-dvc', 'weather-mlops-dvc', false)
+on conflict (id) do nothing;
+
+-- Future model registry mirror. MLflow is intentionally deferred for now, so
+-- mlflow_run_id is nullable until that stage is implemented.
 create table if not exists public.model_versions (
-    id                 bigserial    primary key,
-    mlflow_run_id      text         not null unique,
-    mlflow_model_uri   text,
-    name               text         not null,        -- e.g. "weather_baseline"
-    stage              text         not null default 'None',  -- None|Staging|Production|Archived
-    metrics            jsonb,
-    params             jsonb,
-    tags               jsonb,
-    registered_at      timestamptz  not null default now()
+    id bigserial primary key,
+    mlflow_run_id text unique,
+    mlflow_model_uri text,
+    artifact_path text,
+    dataset_sha256 text,
+    name text not null,
+    stage text not null default 'None',
+    metrics jsonb,
+    params jsonb,
+    tags jsonb,
+    registered_at timestamptz not null default now()
 );
 
--- ---------- Phase 4: predictions log (drift detection source) ----------
--- Mentor brief: "Store each prediction along with its features in the database."
--- Evidently's drift DAG reads from here.
+-- Future prediction log for the API and drift checks.
 create table if not exists public.predictions (
-    id                  uuid         primary key default uuid_generate_v4(),
-    prediction_ts       timestamptz  not null default now(),
-    model_version_id    bigint,                      -- FK added below (ALTER to dodge ordering)
-    features            jsonb        not null,        -- exact features fed to the model
-    predicted_value     numeric,                     -- regression target (e.g. temp_c)
-    predicted_class     text,                        -- or classification label
-    request_id          text,                        -- API correlation id
-    latency_ms          integer
+    id uuid primary key default uuid_generate_v4(),
+    prediction_ts timestamptz not null default now(),
+    model_version_id bigint,
+    features jsonb not null,
+    predicted_value numeric,
+    predicted_class text,
+    probability double precision,
+    request_id text,
+    latency_ms integer
 );
 
--- FK on predictions -> model_versions. Safe on re-runs (idempotent).
 do $$
 begin
     if not exists (
@@ -93,95 +107,59 @@ create index if not exists idx_predictions_ts
 create index if not exists idx_predictions_model_version
     on public.predictions (model_version_id, prediction_ts desc);
 
--- GIN index on features so drift tooling can query feature drift efficiently.
 create index if not exists idx_predictions_features_gin
     on public.predictions using gin (features);
 
--- ---------- Phase 4: drift reports ----------
+-- Future drift reports generated by Evidently/Airflow.
 create table if not exists public.drift_reports (
-    id                 bigserial    primary key,
-    generated_at       timestamptz  not null default now(),
-    scope              text         not null,        -- 'training' | 'prediction'
-    reference_dataset  text,                        -- name or path of reference dataset
-    current_dataset    text,                        -- name or path of current dataset
-    drift_detected     boolean      not null,
-    metrics            jsonb        not null,        -- Evidently summary metrics
-    report_html_path   text,                        -- file path or Supabase storage URL
-    mlflow_run_id      text                         -- if logged to MLflow
+    id bigserial primary key,
+    generated_at timestamptz not null default now(),
+    scope text not null,
+    reference_dataset text,
+    current_dataset text,
+    drift_detected boolean not null,
+    metrics jsonb not null,
+    report_html_path text,
+    mlflow_run_id text
 );
 
 create index if not exists idx_drift_reports_generated_at
     on public.drift_reports (generated_at desc);
 
--- =========================================================
---  Row-Level Security
---  Default: deny all to anon/authenticated. Open only
---  what the API service role needs (via service_role key).
--- =========================================================
 alter table public.weather_observations enable row level security;
-alter table public.predictions         enable row level security;
-alter table public.model_versions      enable row level security;
-alter table public.drift_reports       enable row level security;
+alter table public.dataset_versions enable row level security;
+alter table public.predictions enable row level security;
+alter table public.model_versions enable row level security;
+alter table public.drift_reports enable row level security;
 
--- Service-role bypasses RLS automatically. No public policies
--- are granted — the FastAPI server uses the service_role key.
-
--- =========================================================
---  Ziad's role — data editor (no schema mutations)
--- =========================================================
--- Owner runs this once. Ziad gets a connection string
--- using the `ziad_editor` role and password (set via
--- Supabase Dashboard → Database → Roles, NOT here).
---
--- He can: SELECT, INSERT, UPDATE, DELETE on data tables.
--- He cannot: DROP, CREATE, ALTER, TRUNCATE, GRANT.
-do $$
-begin
-    if not exists (select 1 from pg_roles where rolname = 'ziad_editor') then
-        create role ziad_editor login;
-    end if;
-end$$;
-
-grant usage on schema public to ziad_editor;
-
--- Table-level grants
-grant select, insert, update, delete on public.weather_observations to ziad_editor;
-grant select, insert, update, delete on public.predictions          to ziad_editor;
-grant select, insert, update         on public.model_versions       to ziad_editor;  -- no delete: audit trail
-grant select, insert, update         on public.drift_reports        to ziad_editor;  -- no delete: audit trail
-
--- Sequence grants so serial PKs can be assigned
-grant usage, select on all sequences in schema public to ziad_editor;
-
--- RLS policies for `ziad_editor` (matches authenticated writes).
--- Owner service_role bypasses RLS, so this only affects Ziad.
-drop policy if exists ziad_write_weather_obs  on public.weather_observations;
-drop policy if exists ziad_write_predictions  on public.predictions;
-drop policy if exists ziad_write_model_ver    on public.model_versions;
-drop policy if exists ziad_write_drift_rep    on public.drift_reports;
-
-create policy ziad_write_weather_obs
+-- The Python scripts use the server-side Supabase key, which bypasses RLS.
+-- Authenticated policies are kept for later app/API development.
+drop policy if exists auth_write_weather_obs on public.weather_observations;
+create policy auth_write_weather_obs
     on public.weather_observations for all
-    to ziad_editor
+    to authenticated
     using (true) with check (true);
 
-create policy ziad_write_predictions
+drop policy if exists auth_write_dataset_versions on public.dataset_versions;
+create policy auth_write_dataset_versions
+    on public.dataset_versions for all
+    to authenticated
+    using (true) with check (true);
+
+drop policy if exists auth_write_predictions on public.predictions;
+create policy auth_write_predictions
     on public.predictions for all
-    to ziad_editor
+    to authenticated
     using (true) with check (true);
 
-create policy ziad_write_model_ver
+drop policy if exists auth_write_model_ver on public.model_versions;
+create policy auth_write_model_ver
     on public.model_versions for all
-    to ziad_editor
+    to authenticated
     using (true) with check (true);
 
-create policy ziad_write_drift_rep
+drop policy if exists auth_write_drift_rep on public.drift_reports;
+create policy auth_write_drift_rep
     on public.drift_reports for all
-    to ziad_editor
+    to authenticated
     using (true) with check (true);
-
--- Belt-and-braces: explicitly deny schema mutations for Ziad.
--- (Default `create role ... login` already lacks these, but we
--- revoke just in case the role inherits anything from `public`.)
-revoke create on schema public from ziad_editor;
-revoke create on database postgres from ziad_editor;

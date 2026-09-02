@@ -13,7 +13,8 @@ Airflow, MLflow, monitoring, and dashboards are later stages.
 - Replaced the old scaffold with a minimal package under `src/weather_mlops`.
 - Added a locked `uv` environment through `pyproject.toml`, `uv.lock`, and
   `.python-version`.
-- Added one shared Supabase schema at `sql/supabase_schema.sql`.
+- Consolidated the Supabase setup into one shared schema at
+  `supabase/schema.sql`.
 - Added DVC without Git integration, with Supabase Storage as the S3-compatible
   remote.
 - Added a reproducible DVC DAG for dataset metadata, preprocessing, training,
@@ -38,7 +39,8 @@ Do not commit `.env`.
 |   +-- models/                 # Training, evaluation, prediction
 +-- scripts/                    # One-time local helpers
 +-- tests/unit/                 # Focused unit tests
-+-- sql/supabase_schema.sql     # Supabase tables and Storage bucket
++-- supabase/schema.sql         # Canonical Supabase schema
++-- supabase/migrations/        # Tracked Supabase migration SQL
 +-- data/                       # Local DVC outputs, ignored by Git
 +-- models/                     # Local model artifact, ignored by Git
 +-- reports/metrics/            # DVC metric outputs, ignored by Git
@@ -108,14 +110,23 @@ flowchart TD
 ## Supabase State
 
 Supabase is already initialized for this branch. The SQL used for that setup is
-kept in `sql/supabase_schema.sql` so the team can recreate the same tables and
-bucket if a new Supabase project is needed later.
+kept in `supabase/schema.sql`, with the matching migration tracked under
+`supabase/migrations/`, so the team can recreate the same tables and bucket if
+a new Supabase project is needed later.
 
 The schema creates:
 
-- `public.weather_observations`
-- `public.dataset_versions`
-- private Storage bucket `weather-mlops-dvc`
+- `public.weather_observations`, using the WeatherAUS columns loaded by
+  `scripts/load_to_supabase.py`
+- `public.dataset_versions`, storing dataset path, size, MD5, SHA256, and
+  creation time
+- private Storage bucket `weather-mlops-dvc`, used as the DVC remote
+- future tables for `public.model_versions`, `public.predictions`, and
+  `public.drift_reports`
+
+Gabriel's future-facing API, prediction, model, and drift tables are kept in
+the shared schema. The current Phase 1 code writes only to
+`weather_observations` and `dataset_versions`.
 
 ## Local Secrets
 
