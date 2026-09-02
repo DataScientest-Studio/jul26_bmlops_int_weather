@@ -4,7 +4,7 @@ export
 LOCAL_ENV = UV_CACHE_DIR=.uv-cache
 DVC_ENV = $(LOCAL_ENV) DVC_NO_ANALYTICS=1 DVC_SITE_CACHE_DIR=.dvc/tmp/cache-home XDG_CACHE_HOME=.dvc/tmp/cache-home
 
-.PHONY: install sync lint format format-check test test-cov dvc-check-env dvc-config pull push repro train validate evaluate predict load-db check lock
+.PHONY: install sync lint format format-check test test-cov dvc-check-env dvc-config pull push repro merge-raw train validate evaluate predict fetch-open-meteo load-db check lock
 
 install:
 	$(LOCAL_ENV) uv sync
@@ -49,6 +49,9 @@ push:
 repro:
 	$(DVC_ENV) uv run dvc repro
 
+merge-raw:
+	$(LOCAL_ENV) uv run python -m weather_mlops.data.merge_raw
+
 train:
 	$(LOCAL_ENV) uv run python -m weather_mlops.models.training
 
@@ -60,6 +63,10 @@ evaluate:
 
 predict:
 	$(LOCAL_ENV) uv run python -m weather_mlops.models.predict --input-json sample_prediction.json
+
+fetch-open-meteo:
+	@test -n "$(OPEN_METEO_DATE)" || (echo "Usage: make fetch-open-meteo OPEN_METEO_DATE=2026-09-01"; exit 1)
+	$(LOCAL_ENV) uv run python scripts/fetch_open_meteo_daily.py --date "$(OPEN_METEO_DATE)"
 
 load-db:
 	$(LOCAL_ENV) uv run python scripts/load_to_supabase.py

@@ -25,6 +25,7 @@ weather-predict = "weather_mlops.models.predict:main"
 weather-preprocess = "weather_mlops.data.preprocess:main"
 weather-train = "weather_mlops.models.training:main"
 weather-version-data = "weather_mlops.data.versioning:main"
+weather-merge-raw = "weather_mlops.data.merge_raw:main"
 
 [dependency-groups]
 dev = [

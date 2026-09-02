@@ -1,17 +1,28 @@
 stages:
-  version_raw:
-    cmd: python -m weather_mlops.data.versioning --input data/raw/weatherAUS.csv --output data/metadata/weatherAUS.json
+  merge_raw:
+    cmd: python -m weather_mlops.data.merge_raw
     deps:
       - data/raw/weatherAUS.csv
+      - data/raw/incremental
+      - src/weather_mlops/data/merge_raw.py
+      - src/weather_mlops/data/weatheraus_schema.py
+      - src/weather_mlops/config/settings.py
+    outs:
+      - data/raw/weatherAUS_current.csv
+
+  version_raw:
+    cmd: python -m weather_mlops.data.versioning
+    deps:
+      - data/raw/weatherAUS_current.csv
       - src/weather_mlops/data/versioning.py
       - src/weather_mlops/config/settings.py
     outs:
       - data/metadata/weatherAUS.json
 
   preprocess:
-    cmd: python -m weather_mlops.data.preprocess --input data/raw/weatherAUS.csv --output-dir data/processed --train-fraction ${data.train_fraction} --validation-fraction ${data.validation_fraction}
+    cmd: python -m weather_mlops.data.preprocess -t ${data.train_fraction} -v ${data.validation_fraction}
     deps:
-      - data/raw/weatherAUS.csv
+      - data/raw/weatherAUS_current.csv
       - src/weather_mlops/data/preprocess.py
       - src/weather_mlops/config/settings.py
     params:

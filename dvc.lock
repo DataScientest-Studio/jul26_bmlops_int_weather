@@ -1,17 +1,16 @@
 schema: '2.0'
 stages:
   version_raw:
-    cmd: python -m weather_mlops.data.versioning --input data/raw/weatherAUS.csv
-      --output data/metadata/weatherAUS.json
+    cmd: python -m weather_mlops.data.versioning
     deps:
-    - path: data/raw/weatherAUS.csv
+    - path: data/raw/weatherAUS_current.csv
       hash: md5
-      md5: a65cf8b8719b1a65db4f361eeec18457
-      size: 14094055
+      md5: 6dda831b22f71e08f8f3beb29c8deb43
+      size: 15606731
     - path: src/weather_mlops/config/settings.py
       hash: md5
-      md5: 502b06fea06a317366366f64025d0b38
-      size: 2235
+      md5: c6015e26a8c4a8093c125833b7d00d57
+      size: 2490
     - path: src/weather_mlops/data/versioning.py
       hash: md5
       md5: 68ff82726395e266d62baac6ab7a4afd
@@ -19,25 +18,23 @@ stages:
     outs:
     - path: data/metadata/weatherAUS.json
       hash: md5
-      md5: dd4f32463cfcbaf7ce1e18337b8023d3
-      size: 245
+      md5: 99b18219f68ecf520a15ff098f9f32ed
+      size: 253
   preprocess:
-    cmd: python -m weather_mlops.data.preprocess --input data/raw/weatherAUS.csv
-      --output-dir data/processed --train-fraction 0.7 --validation-fraction 
-      0.15
+    cmd: python -m weather_mlops.data.preprocess -t 0.7 -v 0.15
     deps:
-    - path: data/raw/weatherAUS.csv
+    - path: data/raw/weatherAUS_current.csv
       hash: md5
-      md5: a65cf8b8719b1a65db4f361eeec18457
-      size: 14094055
+      md5: 6dda831b22f71e08f8f3beb29c8deb43
+      size: 15606731
     - path: src/weather_mlops/config/settings.py
       hash: md5
-      md5: 502b06fea06a317366366f64025d0b38
-      size: 2235
+      md5: c6015e26a8c4a8093c125833b7d00d57
+      size: 2490
     - path: src/weather_mlops/data/preprocess.py
       hash: md5
-      md5: 22abece2bb5e556133963ba98b039a84
-      size: 5127
+      md5: 3f0773160f690b7b34343053ba01f263
+      size: 5147
     params:
       params.yaml:
         data.train_fraction: 0.7
@@ -45,28 +42,28 @@ stages:
     outs:
     - path: data/processed/X_test.csv
       hash: md5
-      md5: cd1926faac744a18069ecdf075e5be9c
-      size: 1940398
+      md5: 2d09a23f820174fb8c33b2822efd8b8d
+      size: 1941610
     - path: data/processed/X_train.csv
       hash: md5
-      md5: d76e2001f8f129fe8cc084d381904c79
-      size: 9368801
+      md5: 07eaeb663acc4b9c31e70297306551c1
+      size: 9372077
     - path: data/processed/X_validation.csv
       hash: md5
-      md5: 21ac062376c3ae57420f6163c7b25b58
-      size: 1980327
+      md5: 72445beac1ae914129c10e6fc017a636
+      size: 1980874
     - path: data/processed/y_test.csv
       hash: md5
-      md5: cc7dadebcf7713e26dec89f55d0acef7
-      size: 42671
+      md5: d5e931777dd2446343f6b941c83ed385
+      size: 42687
     - path: data/processed/y_train.csv
       hash: md5
-      md5: 2a6ba353298bc4c387be175256864534
-      size: 199083
+      md5: db7c356ce39f85836f27bf6c664f1332
+      size: 199151
     - path: data/processed/y_validation.csv
       hash: md5
-      md5: dc8f7624ffb75ea1418ebdb07e246108
-      size: 42671
+      md5: 120757936f87f9898f399195f8335908
+      size: 42685
   train:
     cmd: python -m weather_mlops.models.training --x-train 
       data/processed/X_train.csv --y-train data/processed/y_train.csv 
@@ -76,20 +73,20 @@ stages:
     deps:
     - path: data/processed/X_train.csv
       hash: md5
-      md5: d76e2001f8f129fe8cc084d381904c79
-      size: 9368801
+      md5: 07eaeb663acc4b9c31e70297306551c1
+      size: 9372077
     - path: data/processed/y_train.csv
       hash: md5
-      md5: 2a6ba353298bc4c387be175256864534
-      size: 199083
+      md5: db7c356ce39f85836f27bf6c664f1332
+      size: 199151
     - path: src/weather_mlops/config/settings.py
       hash: md5
-      md5: 502b06fea06a317366366f64025d0b38
-      size: 2235
+      md5: c6015e26a8c4a8093c125833b7d00d57
+      size: 2490
     - path: src/weather_mlops/data/preprocess.py
       hash: md5
-      md5: 22abece2bb5e556133963ba98b039a84
-      size: 5127
+      md5: 3f0773160f690b7b34343053ba01f263
+      size: 5147
     - path: src/weather_mlops/models/evaluation.py
       hash: md5
       md5: a88cb0ff41dfc8a4429f5094c16d73a2
@@ -109,12 +106,12 @@ stages:
     outs:
     - path: models/rain_classifier.joblib
       hash: md5
-      md5: 28d10e2940c8c99c99ca70f988a84609
-      size: 441196
+      md5: cf3e8feda930675e5a127bb104915e17
+      size: 441128
     - path: reports/metrics/train.json
       hash: md5
-      md5: c4cc158ff21851bae1d5b193f2e7c08d
-      size: 260
+      md5: e68764abe21b1f5352dc1ccfb7c1232c
+      size: 259
   evaluate:
     cmd: python -m weather_mlops.models.evaluation --x-data 
       data/processed/X_test.csv --y-data data/processed/y_test.csv --model-path 
@@ -123,20 +120,20 @@ stages:
     deps:
     - path: data/processed/X_test.csv
       hash: md5
-      md5: cd1926faac744a18069ecdf075e5be9c
-      size: 1940398
+      md5: 2d09a23f820174fb8c33b2822efd8b8d
+      size: 1941610
     - path: data/processed/y_test.csv
       hash: md5
-      md5: cc7dadebcf7713e26dec89f55d0acef7
-      size: 42671
+      md5: d5e931777dd2446343f6b941c83ed385
+      size: 42687
     - path: models/rain_classifier.joblib
       hash: md5
-      md5: 28d10e2940c8c99c99ca70f988a84609
-      size: 441196
+      md5: cf3e8feda930675e5a127bb104915e17
+      size: 441128
     - path: src/weather_mlops/config/settings.py
       hash: md5
-      md5: 502b06fea06a317366366f64025d0b38
-      size: 2235
+      md5: c6015e26a8c4a8093c125833b7d00d57
+      size: 2490
     - path: src/weather_mlops/models/evaluation.py
       hash: md5
       md5: a88cb0ff41dfc8a4429f5094c16d73a2
@@ -144,24 +141,24 @@ stages:
     outs:
     - path: reports/metrics/evaluation.json
       hash: md5
-      md5: 938b31521513b5b36ba2a76d894dfe10
-      size: 212
+      md5: 4bac9a504ecfe6d3b6e5c3572998b5ad
+      size: 211
   predict_sample:
     cmd: python -m weather_mlops.models.predict --input-json 
       sample_prediction.json --output data/predictions/sample_prediction.json
     deps:
     - path: models/rain_classifier.joblib
       hash: md5
-      md5: 28d10e2940c8c99c99ca70f988a84609
-      size: 441196
+      md5: cf3e8feda930675e5a127bb104915e17
+      size: 441128
     - path: sample_prediction.json
       hash: md5
       md5: 1a79f05c00cee13a61b0227450fd6d40
       size: 455
     - path: src/weather_mlops/config/settings.py
       hash: md5
-      md5: 502b06fea06a317366366f64025d0b38
-      size: 2235
+      md5: c6015e26a8c4a8093c125833b7d00d57
+      size: 2490
     - path: src/weather_mlops/models/predict.py
       hash: md5
       md5: e2e73ba3f319206bb9281ec2f12f764e
@@ -169,8 +166,8 @@ stages:
     outs:
     - path: data/predictions/sample_prediction.json
       hash: md5
-      md5: 88626f47006afb1c96c90bab3bcc8dcb
-      size: 66
+      md5: a3dc10125e9ef538ec7a13d2f2d3d11d
+      size: 65
   validate:
     cmd: python -m weather_mlops.models.evaluation --x-data 
       data/processed/X_validation.csv --y-data data/processed/y_validation.csv 
@@ -179,20 +176,20 @@ stages:
     deps:
     - path: data/processed/X_validation.csv
       hash: md5
-      md5: 21ac062376c3ae57420f6163c7b25b58
-      size: 1980327
+      md5: 72445beac1ae914129c10e6fc017a636
+      size: 1980874
     - path: data/processed/y_validation.csv
       hash: md5
-      md5: dc8f7624ffb75ea1418ebdb07e246108
-      size: 42671
+      md5: 120757936f87f9898f399195f8335908
+      size: 42685
     - path: models/rain_classifier.joblib
       hash: md5
-      md5: 28d10e2940c8c99c99ca70f988a84609
-      size: 441196
+      md5: cf3e8feda930675e5a127bb104915e17
+      size: 441128
     - path: src/weather_mlops/config/settings.py
       hash: md5
-      md5: 502b06fea06a317366366f64025d0b38
-      size: 2235
+      md5: c6015e26a8c4a8093c125833b7d00d57
+      size: 2490
     - path: src/weather_mlops/models/evaluation.py
       hash: md5
       md5: a88cb0ff41dfc8a4429f5094c16d73a2
@@ -200,5 +197,34 @@ stages:
     outs:
     - path: reports/metrics/validation.json
       hash: md5
-      md5: 1f7dc0792f56ad211d713b0c49fafb0e
+      md5: adc79fa79af76f0a26dd013019356a41
       size: 248
+  merge_raw:
+    cmd: python -m weather_mlops.data.merge_raw
+    deps:
+    - path: data/raw/incremental
+      hash: md5
+      md5: 7cd716c02a76e3dc0ff6d604f2d62cd5.dir
+      size: 436678
+      nfiles: 3
+    - path: data/raw/weatherAUS.csv
+      hash: md5
+      md5: a65cf8b8719b1a65db4f361eeec18457
+      size: 14094055
+    - path: src/weather_mlops/config/settings.py
+      hash: md5
+      md5: c6015e26a8c4a8093c125833b7d00d57
+      size: 2490
+    - path: src/weather_mlops/data/merge_raw.py
+      hash: md5
+      md5: 5b6b93b6f4db9c2862ff4f4f447e9891
+      size: 2609
+    - path: src/weather_mlops/data/weatheraus_schema.py
+      hash: md5
+      md5: 934bbc5015fe3a6957121707234b6f09
+      size: 425
+    outs:
+    - path: data/raw/weatherAUS_current.csv
+      hash: md5
+      md5: 6dda831b22f71e08f8f3beb29c8deb43
+      size: 15606731
