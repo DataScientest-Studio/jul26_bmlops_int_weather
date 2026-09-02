@@ -19,6 +19,10 @@ Airflow, MLflow, monitoring, and dashboards are later stages.
   remote.
 - Added a reproducible DVC DAG for dataset metadata, preprocessing, training,
   evaluation, and prediction.
+- Added a raw merge stage so the Kaggle seed dataset can be combined with
+  future WeatherAUS-compatible incremental snapshots.
+- Added an Open-Meteo fetcher that stores raw JSON responses and
+  WeatherAUS-compatible CSV snapshots.
 - Added XGBoost training and prediction scripts under `src/weather_mlops/models`.
 - Added lightweight JSON metrics and prediction artifacts instead of MLflow.
 - Removed unused scaffold folders, API placeholders, monitoring placeholders,
@@ -39,6 +43,7 @@ Do not commit `.env`.
 |   +-- models/                 # Training, evaluation, prediction
 +-- scripts/                    # One-time local helpers
 +-- tests/unit/                 # Focused unit tests
++-- references/                 # Small tracked config files
 +-- supabase/schema.sql         # Canonical Supabase schema
 +-- supabase/migrations/        # Tracked Supabase migration SQL
 +-- data/                       # Local DVC outputs, ignored by Git
@@ -60,28 +65,41 @@ Supabase Storage remote. Teammates should not need to download from Kaggle in
 the normal workflow; `make pull` restores the DVC-tracked artifacts from
 Supabase.
 
+Fresh weather observations should enter the project as immutable snapshots
+under `data/raw/incremental/`. Those snapshots are normalized to the same
+WeatherAUS columns, versioned by DVC, and merged with the Kaggle seed into
+`data/raw/weatherAUS_current.csv`. The model pipeline trains from that merged
+current dataset.
+
 The active reproducible flow is:
 
-1. DVC restores `data/raw/weatherAUS.csv`.
-2. `weather_mlops.data.versioning` writes file size, MD5, and SHA256 metadata.
-3. `weather_mlops.data.preprocess` cleans the raw rows, sorts by date, removes
+1. DVC restores `data/raw/weatherAUS.csv` and `data/raw/incremental/`.
+2. `weather_mlops.data.merge_raw` writes `data/raw/weatherAUS_current.csv`.
+3. `weather_mlops.data.versioning` writes file size, MD5, and SHA256 metadata
+   for the merged current dataset.
+4. `weather_mlops.data.preprocess` cleans the raw rows, sorts by date, removes
    `Date` from model features, maps `RainTomorrow` to `0/1`, and writes
    chronological train/validation/test feature and label splits.
-4. `weather_mlops.models.training` trains only from `X_train.csv` and
+5. `weather_mlops.models.training` trains only from `X_train.csv` and
    `y_train.csv`, then writes the model artifact and training metrics.
-5. `weather_mlops.models.evaluation` evaluates the saved model on validation
+6. `weather_mlops.models.evaluation` evaluates the saved model on validation
    and test splits.
-6. `weather_mlops.models.predict` loads the saved model and predicts one JSON
+7. `weather_mlops.models.predict` loads the saved model and predicts one JSON
    sample. This is the function the future API can call.
 
 ```mermaid
 flowchart TD
     raw_dvc["data/raw/weatherAUS.csv.dvc"] --> raw["data/raw/weatherAUS.csv"]
+    inc_dvc["data/raw/incremental.dvc"] --> inc["data/raw/incremental/*.json + *.csv"]
 
-    raw --> version_code["src/weather_mlops/data/versioning.py"]
+    raw --> merge_code["src/weather_mlops/data/merge_raw.py"]
+    inc --> merge_code
+    merge_code --> current["data/raw/weatherAUS_current.csv"]
+
+    current --> version_code["src/weather_mlops/data/versioning.py"]
     version_code --> metadata["data/metadata/weatherAUS.json"]
 
-    raw --> preprocess_code["src/weather_mlops/data/preprocess.py"]
+    current --> preprocess_code["src/weather_mlops/data/preprocess.py"]
     preprocess_code --> xtrain["data/processed/X_train.csv"]
     preprocess_code --> ytrain["data/processed/y_train.csv"]
     preprocess_code --> xval["data/processed/X_validation.csv"]
@@ -106,6 +124,84 @@ flowchart TD
     sample["sample_prediction.json"] --> predict_code
     predict_code --> prediction["data/predictions/sample_prediction.json"]
 ```
+
+## Fresh Weather Data
+
+The original Kaggle file is a historical seed dataset. For fresh Australian
+weather observations, use Open-Meteo because it provides public historical
+weather access without a project API key for this early non-commercial stage,
+JSON responses, global coordinate coverage, daily aggregates, and hourly
+observations.
+
+The fetch script queries the configured WeatherAUS locations in
+`references/weather_locations.csv`. For each location and date it stores the raw
+Open-Meteo JSON and a normalized WeatherAUS-compatible CSV snapshot under
+`data/raw/incremental/`.
+
+```bash
+make fetch-open-meteo OPEN_METEO_DATE=2026-09-01
+uv run dvc add data/raw/incremental
+make repro
+make push
+```
+
+Use a fully observed historical date. In practice, that usually means fetching
+two days ago, because `RainTomorrow` for a given row depends on the following
+day's rainfall.
+
+Open-Meteo returns wind speeds in km/h when requested with
+`wind_speed_unit=kmh`, matching WeatherAUS-style wind columns. Cloud cover is
+converted from percent to oktas (`0`-`8`). Sunshine duration is converted from
+seconds to hours. Evapotranspiration is mapped to the WeatherAUS `Evaporation`
+column as the closest available daily proxy.
+
+Later, Airflow should own the scheduled fetch step:
+
+1. Run `make fetch-open-meteo OPEN_METEO_DATE=<yyyy-mm-dd>`.
+2. Run `uv run dvc add data/raw/incremental`.
+3. Run `make repro`.
+4. Run `make push`.
+5. Optionally run `make load-db` to update Supabase Postgres metadata and rows.
+
+## Weather API Choice
+
+We compared Open-Meteo, OpenWeather, and The Weather Company/Weather.com for
+fresh weather ingestion.
+
+Open-Meteo is the current choice because it keeps this phase simple:
+
+- No API key is required for this early non-commercial workflow.
+- Historical data is available through one archive endpoint.
+- The endpoint returns JSON and downloadable CSV.
+- It supports the hourly and daily variables needed to approximate the
+  WeatherAUS columns: temperature, humidity, pressure, rain, cloud cover, wind
+  speed, wind direction, wind gusts, sunshine duration, and evapotranspiration.
+- It supports Australian coordinates directly, so we can fetch the same
+  WeatherAUS locations listed in `references/weather_locations.csv`.
+
+OpenWeather was not chosen for now because the useful endpoints for this
+pipeline are under One Call API 3.0. Those endpoints support historical
+timestamp and daily aggregation data, but they require a separate One Call
+subscription/activation even though some calls may be free. That adds account
+and billing setup before the team can reproduce the pipeline.
+
+The Weather Company/Weather.com was not chosen for now because it is also
+API-key based and oriented around provisioned trial or paid access. It has
+strong enterprise weather products, but it adds more setup friction than we
+need for the first reproducible local pipeline.
+
+The tradeoff is that Open-Meteo values are model/reanalysis based at grid-cell
+coordinates, while the Kaggle seed was built from station observations. That is
+acceptable for this stage because the goal is to prove reproducible ingestion,
+versioning, preprocessing, training, and evaluation. Later, the team can revisit
+provider choice if station-level accuracy or enterprise data access becomes a
+hard requirement.
+
+References:
+
+- [Open-Meteo Historical Weather API](https://open-meteo.com/en/docs/historical-weather-api)
+- [OpenWeather One Call API 3.0](https://openweathermap.org/api/one-call-3)
+- [The Weather Company API docs](https://developer.weather.com/docs/getting-started)
 
 ## Supabase State
 
@@ -211,10 +307,12 @@ make check      # lint, format check, unit tests
 make repro      # run the DVC pipeline
 make pull       # pull DVC artifacts from Supabase Storage
 make push       # push DVC artifacts to Supabase Storage
+make merge-raw  # merge Kaggle seed data with incremental raw snapshots
 make train      # run training directly
 make validate   # evaluate the model on the validation split
 make evaluate   # run evaluation directly
 make predict    # write sample prediction JSON
+make fetch-open-meteo # fetch Open-Meteo JSON and normalized CSV snapshots
 make load-db    # load raw weather rows and metadata into Supabase Postgres
 ```
 
@@ -239,19 +337,21 @@ uv run dvc status -c
 uv run dvc metrics show
 ```
 
-## Current Supabase Metadata
+## Current Dataset Metadata
 
-The raw dataset has been loaded once with repo-relative metadata:
+The current merged raw dataset has repo-relative metadata:
 
 ```text
 dataset_name: weatherAUS
-path: data/raw/weatherAUS.csv
-md5: a65cf8b8719b1a65db4f361eeec18457
-sha256: 573fd715cd69fcacc4df32024d823b450ae3edaae7e8ff2eeb623adbed424014
+path: data/raw/weatherAUS_current.csv
+md5: 06b1da4ba0778152250267b3ecab2f13
+sha256: 5f9a9cff896cd4be2a358891943361c1caaaa4e26448703d5da2639ebe7e155e
 ```
 
 ## Current Outputs
 
+- `data/raw/incremental/`
+- `data/raw/weatherAUS_current.csv`
 - `data/metadata/weatherAUS.json`
 - `data/processed/X_train.csv`
 - `data/processed/y_train.csv`

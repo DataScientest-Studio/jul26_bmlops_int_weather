@@ -13,7 +13,10 @@ class Settings(BaseSettings):
     )
 
     # Paths
-    raw_data_path: Path = PROJECT_ROOT / "data" / "raw" / "weatherAUS.csv"
+    seed_raw_data_path: Path = PROJECT_ROOT / "data" / "raw" / "weatherAUS.csv"
+    raw_incremental_dir: Path = PROJECT_ROOT / "data" / "raw" / "incremental"
+    raw_data_path: Path = PROJECT_ROOT / "data" / "raw" / "weatherAUS_current.csv"
+    weather_locations_path: Path = PROJECT_ROOT / "references" / "weather_locations.csv"
     processed_data_dir: Path = PROJECT_ROOT / "data" / "processed"
     x_train_path: Path = PROJECT_ROOT / "data" / "processed" / "X_train.csv"
     x_validation_path: Path = PROJECT_ROOT / "data" / "processed" / "X_validation.csv"

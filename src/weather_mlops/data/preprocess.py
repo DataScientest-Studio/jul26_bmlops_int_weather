@@ -109,8 +109,9 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Preprocess weatherAUS.csv for modeling.")
     parser.add_argument("--input", type=Path, default=settings.raw_data_path)
     parser.add_argument("--output-dir", type=Path, default=settings.processed_data_dir)
-    parser.add_argument("--train-fraction", type=float, default=settings.train_fraction)
+    parser.add_argument("-t", "--train-fraction", type=float, default=settings.train_fraction)
     parser.add_argument(
+        "-v",
         "--validation-fraction",
         type=float,
         default=settings.validation_fraction,
