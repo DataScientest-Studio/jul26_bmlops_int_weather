@@ -9,22 +9,40 @@ from weather_mlops.config.settings import settings
 from weather_mlops.models.predict import load_model, predict
 from weather_mlops.models.training import train_model
 
-WindDirection = Literal["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
-                          "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"]
+WindDirection = Literal[
+    "N",
+    "NNE",
+    "NE",
+    "ENE",
+    "E",
+    "ESE",
+    "SE",
+    "SSE",
+    "S",
+    "SSW",
+    "SW",
+    "WSW",
+    "W",
+    "WNW",
+    "NW",
+    "NNW",
+]
+
 
 def convert(x):
     """
     Convert a snake_case feature name to a PascalCase.
-    
-    The API accepts snake_case field names (Python convention), 
-    but the trained pipeline expects the original 
-    PascalCase column names from the source CSV (e.g. "MinTemp"). 
+
+    The API accepts snake_case field names (Python convention),
+    but the trained pipeline expects the original
+    PascalCase column names from the source CSV (e.g. "MinTemp").
     This function translates between the two.
     """
 
-    x = x.split('_')
-    res = ''.join(word.capitalize() for word in x[0:])
-    return(res)
+    x = x.split("_")
+    res = "".join(word.capitalize() for word in x[0:])
+    return res
+
 
 @lru_cache(maxsize=1)
 def get_locations():
@@ -48,25 +66,26 @@ def get_locations():
 
     return []
 
+
 class PredictionInput(BaseModel):
     location: str
-    min_temp: float | None =  Field(default = None, ge = -20, le = 40)
-    max_temp: float | None = Field(default = None, ge = -10, le = 60)
-    rainfall: float | None = Field(default = None, ge= 0, le = 500)
-    evaporation: float | None = Field(default = None, ge= 0, le = 250)
-    sunshine: float | None = Field(default = None, ge= 0, le = 18)
+    min_temp: float | None = Field(default=None, ge=-20, le=40)
+    max_temp: float | None = Field(default=None, ge=-10, le=60)
+    rainfall: float | None = Field(default=None, ge=0, le=500)
+    evaporation: float | None = Field(default=None, ge=0, le=250)
+    sunshine: float | None = Field(default=None, ge=0, le=18)
     wind_gust_dir: WindDirection | None = None
     wind_gust_speed: float | None = Field(default=None, ge=0, le=200)
     wind_dir_9am: WindDirection | None = None
     wind_dir_3pm: WindDirection | None = None
     wind_speed_9am: float | None = Field(default=None, ge=0, le=200)
     wind_speed_3pm: float | None = Field(default=None, ge=0, le=200)
-    humidity_9am: float | None = Field(default = None, ge= 0, le = 100)
-    humidity_3pm: float | None = Field(default = None, ge= 0, le = 100)
+    humidity_9am: float | None = Field(default=None, ge=0, le=100)
+    humidity_3pm: float | None = Field(default=None, ge=0, le=100)
     pressure_9am: float | None = Field(default=None, ge=950, le=1070)
     pressure_3pm: float | None = Field(default=None, ge=950, le=1070)
-    cloud_9am: float | None = Field(default = None, ge= 0, le = 9)
-    cloud_3pm: float | None = Field(default = None, ge= 0, le = 9)
+    cloud_9am: float | None = Field(default=None, ge=0, le=9)
+    cloud_3pm: float | None = Field(default=None, ge=0, le=9)
     temp_9am: float | None = Field(default=None, ge=-20, le=60)
     temp_3pm: float | None = Field(default=None, ge=-20, le=60)
     rain_today: Literal["Yes", "No"] | None = None
@@ -99,10 +118,10 @@ class PredictionInput(BaseModel):
         Checks if at least the location and three additional weather values are provided
 
         There are 20 different features which can be provided (location + 19 weather conditions).
-        Weather stations could lack some weather values due to problems. 
+        Weather stations could lack some weather values due to problems.
         We need at least four values (location + 3 weather values)
         to predict if it's going to rain tomorrow
-        
+
         """
         dict_values = self.model_dump()
         count_filled = sum(1 for value in dict_values.values() if value is not None)
@@ -112,15 +131,17 @@ class PredictionInput(BaseModel):
 
 
 class TrainInput(BaseModel):
-    n_estimators: int = Field(default = 250, gt = 0)
-    max_depth: int = Field(default = 4, gt = 0, le = 15)
-    learning_rate: float = Field(default = 0.05, gt = 0, le = 1)
-    subsample: float = Field(default = 0.9, gt = 0, le = 1)
-    colsample_bytree: float = Field(default = 0.9, gt = 0, le = 1)
+    n_estimators: int = Field(default=250, gt=0)
+    max_depth: int = Field(default=4, gt=0, le=15)
+    learning_rate: float = Field(default=0.05, gt=0, le=1)
+    subsample: float = Field(default=0.9, gt=0, le=1)
+    colsample_bytree: float = Field(default=0.9, gt=0, le=1)
+
 
 class PredictionOutput(BaseModel):
     rain_tomorrow: bool
     probability: float
+
 
 class TrainOutput(BaseModel):
     accuracy: float
@@ -130,15 +151,15 @@ class TrainOutput(BaseModel):
     roc_auc: float
 
 
-
 app = FastAPI()
+
 
 @app.get("/health")
 def health_check():
     """
     Report whether the API is running and whether a trained model is available.
 
-    This is used mostly by orchestration tools to verify 
+    This is used mostly by orchestration tools to verify
     the service is ready before routing traffic to it.
     A missing model means /predict will fail until /train has been called
     """
@@ -146,13 +167,11 @@ def health_check():
         model_status = "A pretrained model is already loaded"
     else:
         model_status = "There is no pretrained model loaded"
-    
-    return {
-        "status": "This API is running",
-        "model_status": model_status
-    }
 
-@app.post("/predict", response_model = PredictionOutput)
+    return {"status": "This API is running", "model_status": model_status}
+
+
+@app.post("/predict", response_model=PredictionOutput)
 def predict_endpoint(features: PredictionInput):
     """
     Predict whether it will rain tomorrow at the given location.
@@ -161,15 +180,14 @@ def predict_endpoint(features: PredictionInput):
     and whatever weather features were provided.
     """
     raw_dict = features.model_dump()
-    converted_dict ={convert(key): value for key, value in raw_dict.items()}
+    converted_dict = {convert(key): value for key, value in raw_dict.items()}
     try:
         return predict(converted_dict)
     except FileNotFoundError as e:
-        raise HTTPException(status_code = 404, detail = f"Required model not found: {e}.") from e
+        raise HTTPException(status_code=404, detail=f"Required model not found: {e}.") from e
 
 
-
-@app.post("/train", response_model = TrainOutput)
+@app.post("/train", response_model=TrainOutput)
 def train_endpoint(features: TrainInput):
     """
     Train a new rainfall classifier and return its evaluation metrics.
@@ -184,4 +202,4 @@ def train_endpoint(features: TrainInput):
         get_locations.cache_clear()
         return metrics
     except FileNotFoundError as e:
-        raise HTTPException(status_code = 404, detail = f"Required file not found: {e}") from e
+        raise HTTPException(status_code=404, detail=f"Required file not found: {e}") from e
