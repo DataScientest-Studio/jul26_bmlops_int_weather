@@ -10,19 +10,72 @@ This document summarizes the guidelines provided by the mentor for the **MLOps p
 
 ---
 
+## Project Objectives and Key Metrics
+
+### What we are building
+
+A system that predicts whether it will rain tomorrow at a given weather station in Australia,
+and serves that prediction through an API. The point of the project is not the prediction
+itself — it is the machinery around it: getting the data in, training, versioning, serving,
+watching for drift, and retraining when needed.
+
+### The data
+
+- **Source**: WeatherAUS, extended with fresh daily data from Open-Meteo.
+- **Size**: 145,509 daily observations from 49 weather stations.
+- **Period**: 2007-11-01 to 2026-09-01.
+- **Input**: the station name plus 20 weather measurements taken that day
+  (temperature, rainfall, humidity, pressure, wind, cloud, sunshine).
+- **Target**: `RainTomorrow` — Yes or No.
+
+The data is unbalanced: it rains on about 1 day in 4 (31,890 Yes against 110,352 No).
+3,267 rows have no label and are dropped.
+
+### The prediction task
+
+Binary classification. Given one day of weather at one station, say whether it will rain there
+the next day, and how confident we are.
+
+### Baseline model
+
+XGBoost, trained on a temporal split (70% train / 15% validation / 15% test — the test set is
+the most recent period, so we are always predicting forward in time).
+
+### Our target metrics
+
+- **Primary metric: ROC-AUC.** The baseline is **0.866** on the test set. A retrained model has
+  to beat this number to replace the one in production.
+- **Guardrail: recall.** Currently **0.771**. Missing a rainy day costs more than a false alarm,
+  so we do not accept a model that raises accuracy by dropping recall below **0.75**.
+- **We deliberately do not use accuracy as the main metric.** Since it only rains 1 day in 4,
+  a model that always answers "No" would already score 77.6% accuracy — almost the same as our
+  79.0%. Accuracy would make a useless model look good.
+
+### What is out of scope for now
+
+- Beating the state of the art. The mentor's rule stands: 1–2 days on the model, the rest on the architecture.
+- Forecasting more than one day ahead, or predicting how much rain.
+- A separate model per station — one model covers all 49.
+
+---
+
 ## Project Plan & Deadlines
 
 ### Phase 0: Kick-off — Deadline: Before Aug 28
+
 - Q&A meeting (15 min)
 
 ### Internal Meeting — Mon Aug 31, 10:00 AM CET
+
 - Team kick-off (internal).
 
 ### Phase 1: Foundations — Deadline: Sep 4
-- Define project objectives and key metrics.      // Jonathan
-- ✅ Set up a reproducible development environment.  // Ziad — DONE 2026-08-31
+
+- ✅ Define project objectives and key metrics. // Jonathan
+  - See chapter [**Project Objectives and Key Metrics**](#project-objectives-and-key-metrics)
+- ✅ Set up a reproducible development environment. // Ziad — DONE 2026-08-31
 - Collect and preprocess data:
-  - ✅ Create a database (SQL or NoSQL).              // Supabase - Gabriel — DONE 2026-08-31
+  - ✅ Create a database (SQL or NoSQL). // Supabase - Gabriel — DONE 2026-08-31
     - Supabase project: `fgxgenjxslytnqygpefk` (eu-west-1), Postgres 17
     - DB host: `db.fgxgenjxslytnqygpefk.supabase.co:5432`
     - Schema: WeatherAUS-compatible `public.weather_observations`, `public.dataset_versions`, future `public.predictions`, `public.model_versions`, `public.drift_reports`, and the `weather-mlops-dvc` Storage bucket (see `supabase/schema.sql`)
@@ -32,9 +85,12 @@ This document summarizes the guidelines provided by the mentor for the **MLOps p
 - Build and evaluate a baseline ML model:
   - ✅ Create 2 Python scripts: `training.py` and `predict.py`. // XGBoost - Ziad — DONE 2026-08-31
 - Implement a basic inference API:
-  - Create 2 endpoints: `training/` and `predict/`. // Gabriel + Thomas
+  - Create 2 endpoints: `training/` and `predict/`. // Gabriel + Thomas — IN REVIEW 2026-09-03
+    - Branch `feature/inference-api`, not merged. Works; needs input validation, `/train` fixes,
+      CI and a rebase before merging.
 
 ### Phase 2: Microservices, Tracking & Versioning — Deadline: Sep 20
+
 - Set up experiment tracking with **MLflow**: // Jonathan
   - Add MLflow logging to the training script.
   - Implement data and model versioning using the MLflow Model Registry.
@@ -52,6 +108,7 @@ This document summarizes the guidelines provided by the mentor for the **MLOps p
 - **(OPTIONAL)** Implement scalability with Kubernetes. // Thomas
 
 ### Phase 3: Monitoring & Maintenance — Deadline: Oct 2
+
 - Implement drift detection with **Evidently** in the Airflow pipeline:
   - **Training**:
     - Reference dataset: historical dataset.
@@ -70,6 +127,7 @@ This document summarizes the guidelines provided by the mentor for the **MLOps p
 - Finish the repo's technical documentation.
 
 ### Final Presentation (Defense) — Oct 13
+
 - 15-minute presentation: explain project progress and chosen architecture.
 - 5-minute demonstration: show the application is functional.
 - 10-minute Q&A with the jury.
@@ -89,19 +147,19 @@ This document summarizes the guidelines provided by the mentor for the **MLOps p
 
 ## Recommended Stack
 
-| Concern | Tool |
-|---|---|
-| Database | SQL or NoSQL (local) |
-| API framework | FastAPI (`predict/` and `training/` endpoints) |
-| Experiment tracking | MLflow (logging + Model Registry) |
-| Data versioning | DVC (without Git) + hashes in MLflow |
-| Orchestration | Airflow, Jenkins, or cron |
-| Drift detection | Evidently |
-| Monitoring | Prometheus + Grafana |
-| Frontend | Streamlit |
-| Microservices | Docker + docker-compose |
-| CI/CD (optional) | GitHub Actions |
-| Scaling (optional) | Kubernetes |
+| Concern             | Tool                                           |
+| ------------------- | ---------------------------------------------- |
+| Database            | SQL or NoSQL (local)                           |
+| API framework       | FastAPI (`predict/` and `training/` endpoints) |
+| Experiment tracking | MLflow (logging + Model Registry)              |
+| Data versioning     | DVC (without Git) + hashes in MLflow           |
+| Orchestration       | Airflow, Jenkins, or cron                      |
+| Drift detection     | Evidently                                      |
+| Monitoring          | Prometheus + Grafana                           |
+| Frontend            | Streamlit                                      |
+| Microservices       | Docker + docker-compose                        |
+| CI/CD (optional)    | GitHub Actions                                 |
+| Scaling (optional)  | Kubernetes                                     |
 
 ---
 
@@ -114,6 +172,7 @@ This document summarizes the guidelines provided by the mentor for the **MLOps p
 - Defense guidelines: https://docs.google.com/document/d/1bF9K4yBjaeWvBRdnNCIpwHDLqdZUHX1VRiEpQOQPY0A/edit
 
 ### Similar Projects for Inspiration
+
 - Pompiers (June 2023): https://github.com/DataScientest-Studio/juin23_continu_mlops_pompiers/tree/master
 - Bird Image Recognition (AVR24CMLOPS): https://github.com/DataScientest-Studio/AVR24CMLOPS_Bird-Image-Recognition
 - Streamlit gallery: https://streamlit.io/gallery
@@ -121,6 +180,7 @@ This document summarizes the guidelines provided by the mentor for the **MLOps p
 - Slides / Streamlit archive: https://drive.google.com/drive/folders/1q3fFLqENeoFD66BD6UP5eIJYcnJsag23
 
 ### Architecture Goals
+
 - **Training pipeline** (chart n°1): Automated/scheduled batch process — Airflow, Jenkins, or a simple cron job.
 - **Prediction pipeline** (chart n°2): Real-time process.
 
