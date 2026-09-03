@@ -5,6 +5,7 @@ from pydantic import BaseModel, model_validator, Field, field_validator
 from weather_mlops.models.predict import predict, load_model
 from weather_mlops.models.training import train_model
 from weather_mlops.config.settings import settings
+import difflib
 
 
 WindDirection = Literal["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
@@ -28,8 +29,13 @@ def get_locations():
     preprocessor = pipeline.named_steps["preprocessor"]
     categorical_pipeline = preprocessor.named_transformers_["categorical"]
     categorical_encoder = categorical_pipeline.named_steps["encoder"]
-    locations = categorical_encoder.categories_[0]
-    return locations
+
+    for name, _, columns in preprocessor.transformers_:
+        if name == "categorical":
+            location_index = columns.index("Location")
+            return list(categorical_encoder.categories_[location_index])
+
+    return []
 
 class PredictionInput(BaseModel):
     location: str
@@ -61,7 +67,9 @@ class PredictionInput(BaseModel):
             for known_location in get_locations():
                 if value.lower() == known_location.lower():
                     return known_location
-            raise ValueError(f"Unknown location: '{value}'")
+            hint = difflib.get_close_matches(value, get_locations(), n=1, cutoff=0.6)
+            suggestion = f" Did you mean '{hint[0]}'?" if hint else ""
+            raise ValueError(f"Unknown location: '{value}'.{suggestion}")
         except FileNotFoundError:
             return value
 
