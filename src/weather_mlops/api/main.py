@@ -1,3 +1,5 @@
+import difflib
+
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, model_validator, Field
 from weather_mlops.models.predict import predict, load_model
@@ -10,6 +12,16 @@ def convert(x):
     # Capitalize each word after the first and join them back together
     res = ''.join(word.capitalize() for word in x[0:])
     return(res)
+
+def known_locations() -> list[str]:
+    """Locations the trained model was actually fitted on."""
+    preprocessor = load_model().named_steps["preprocessor"]
+    for name, transformer, columns in preprocessor.transformers_:
+        if name == "categorical":
+            encoder = transformer.named_steps["encoder"]
+            return list(encoder.categories_[columns.index("Location")])
+    return []
+
 
 class PredictionInput(BaseModel):
     location: str
@@ -33,6 +45,15 @@ class PredictionInput(BaseModel):
     temp_9am: float | None = None
     temp_3pm: float | None = None
     rain_today: str | None = None
+
+    @model_validator(mode="after")
+    def check_location_is_known(self):
+        known = known_locations()
+        if known and self.location not in known:
+            hint = difflib.get_close_matches(self.location, known, n=1, cutoff=0.6)
+            suggestion = f" Did you mean '{hint[0]}'?" if hint else ""
+            raise ValueError(f"Unknown location '{self.location}'.{suggestion}")
+        return self
 
     @model_validator(mode="after")
     def check_minimum_values(self):
