@@ -1,12 +1,13 @@
+import difflib
 from functools import lru_cache
 from typing import Literal
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, model_validator, Field, field_validator
-from weather_mlops.models.predict import predict, load_model
-from weather_mlops.models.training import train_model
-from weather_mlops.config.settings import settings
-import difflib
 
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+from weather_mlops.config.settings import settings
+from weather_mlops.models.predict import load_model, predict
+from weather_mlops.models.training import train_model
 
 WindDirection = Literal["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
                           "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"]
@@ -15,8 +16,10 @@ def convert(x):
     """
     Convert a snake_case feature name to a PascalCase.
     
-    The API accepts snake_case field names (Python convention), but the trained pipeline expects the original 
-    PascalCase column names from the source CSV (e.g. "MinTemp"). This function translates between the two.
+    The API accepts snake_case field names (Python convention), 
+    but the trained pipeline expects the original 
+    PascalCase column names from the source CSV (e.g. "MinTemp"). 
+    This function translates between the two.
     """
 
     x = x.split('_')
@@ -25,6 +28,14 @@ def convert(x):
 
 @lru_cache(maxsize=1)
 def get_locations():
+    """
+    Return the location values the currently loaded model was trained on.
+
+    Reads the categories learned by the OneHotEncoder inside the trained
+    pipeline, so the valid location list always matches the current model
+    instead of a hardcoded list that could drift out of sync after retraining.
+    Cached because the pipeline rarely changes between requests.
+    """
     pipeline = load_model()
     preprocessor = pipeline.named_steps["preprocessor"]
     categorical_pipeline = preprocessor.named_transformers_["categorical"]
@@ -63,6 +74,15 @@ class PredictionInput(BaseModel):
     @field_validator("location")
     @classmethod
     def normalize_location(cls, value: str) -> str:
+        """
+        Validate and normalize the location against the model's known locations.
+
+        Case-insensitive matching corrects typos in casing (e.g. "sydney" ->
+        "Sydney"). If no match is found, raises an error with a "did you mean"
+        suggestion for likely typos. If no model exists yet, the value is passed
+        through unchanged so the caller gets /predict's clearer "no model" error
+        instead of a validation error here.
+        """
         try:
             for known_location in get_locations():
                 if value.lower() == known_location.lower():
@@ -79,7 +99,8 @@ class PredictionInput(BaseModel):
         Checks if at least the location and three additional weather values are provided
 
         There are 20 different features which can be provided (location + 19 weather conditions).
-        Weather stations could lack some weather values due to problems. We need at least four values (location + 3 weather values)
+        Weather stations could lack some weather values due to problems. 
+        We need at least four values (location + 3 weather values)
         to predict if it's going to rain tomorrow
         
         """
@@ -117,7 +138,8 @@ def health_check():
     """
     Report whether the API is running and whether a trained model is available.
 
-    This is used mostly by orchestration tools to verify the service is ready before routing traffic to it.
+    This is used mostly by orchestration tools to verify 
+    the service is ready before routing traffic to it.
     A missing model means /predict will fail until /train has been called
     """
     if settings.model_path.exists():
@@ -143,7 +165,7 @@ def predict_endpoint(features: PredictionInput):
     try:
         return predict(converted_dict)
     except FileNotFoundError as e:
-        raise HTTPException(status_code = 404, detail = f"Required model not found: {e}.")
+        raise HTTPException(status_code = 404, detail = f"Required model not found: {e}.") from e
 
 
 
@@ -162,4 +184,4 @@ def train_endpoint(features: TrainInput):
         get_locations.cache_clear()
         return metrics
     except FileNotFoundError as e:
-        raise HTTPException(status_code = 404, detail = f"Required file not found: {e}")
+        raise HTTPException(status_code = 404, detail = f"Required file not found: {e}") from e
