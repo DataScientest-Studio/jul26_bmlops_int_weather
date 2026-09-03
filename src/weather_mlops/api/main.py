@@ -1,4 +1,5 @@
 import difflib
+from datetime import date
 from functools import lru_cache
 from typing import Literal
 
@@ -6,6 +7,13 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from weather_mlops.config.settings import settings
+from weather_mlops.data.open_meteo import (
+    OpenMeteoError,
+    WeatherLocation,
+    fetch_open_meteo_daily_payload,
+    normalize_open_meteo_payloads,
+    read_locations,
+)
 from weather_mlops.models.predict import load_model, predict
 from weather_mlops.models.training import train_model
 
@@ -67,28 +75,26 @@ def get_locations():
     return []
 
 
-class PredictionInput(BaseModel):
+@lru_cache(maxsize=1)
+def get_weather_locations():
+    """
+    Load and cache the known locations with their Open-Meteo coordinates.
+    """
+    return read_locations(settings.weather_locations_path)
+
+
+def find_location(name: str) -> WeatherLocation | None:
+    """
+    Look up a WeatherLocation by exact name, or None if not found.
+    """
+    for loc in get_weather_locations():
+        if loc.location == name:
+            return loc
+    return None
+
+
+class LocationBase(BaseModel):
     location: str
-    min_temp: float | None = Field(default=None, ge=-20, le=40)
-    max_temp: float | None = Field(default=None, ge=-10, le=60)
-    rainfall: float | None = Field(default=None, ge=0, le=500)
-    evaporation: float | None = Field(default=None, ge=0, le=250)
-    sunshine: float | None = Field(default=None, ge=0, le=18)
-    wind_gust_dir: WindDirection | None = None
-    wind_gust_speed: float | None = Field(default=None, ge=0, le=200)
-    wind_dir_9am: WindDirection | None = None
-    wind_dir_3pm: WindDirection | None = None
-    wind_speed_9am: float | None = Field(default=None, ge=0, le=200)
-    wind_speed_3pm: float | None = Field(default=None, ge=0, le=200)
-    humidity_9am: float | None = Field(default=None, ge=0, le=100)
-    humidity_3pm: float | None = Field(default=None, ge=0, le=100)
-    pressure_9am: float | None = Field(default=None, ge=950, le=1070)
-    pressure_3pm: float | None = Field(default=None, ge=950, le=1070)
-    cloud_9am: float | None = Field(default=None, ge=0, le=9)
-    cloud_3pm: float | None = Field(default=None, ge=0, le=9)
-    temp_9am: float | None = Field(default=None, ge=-20, le=60)
-    temp_3pm: float | None = Field(default=None, ge=-20, le=60)
-    rain_today: Literal["Yes", "No"] | None = None
 
     @field_validator("location")
     @classmethod
@@ -111,6 +117,29 @@ class PredictionInput(BaseModel):
             raise ValueError(f"Unknown location: '{value}'.{suggestion}")
         except FileNotFoundError:
             return value
+
+
+class PredictionInput(LocationBase):
+    min_temp: float | None = Field(default=None, ge=-20, le=40)
+    max_temp: float | None = Field(default=None, ge=-10, le=60)
+    rainfall: float | None = Field(default=None, ge=0, le=500)
+    evaporation: float | None = Field(default=None, ge=0, le=250)
+    sunshine: float | None = Field(default=None, ge=0, le=18)
+    wind_gust_dir: WindDirection | None = None
+    wind_gust_speed: float | None = Field(default=None, ge=0, le=200)
+    wind_dir_9am: WindDirection | None = None
+    wind_dir_3pm: WindDirection | None = None
+    wind_speed_9am: float | None = Field(default=None, ge=0, le=200)
+    wind_speed_3pm: float | None = Field(default=None, ge=0, le=200)
+    humidity_9am: float | None = Field(default=None, ge=0, le=100)
+    humidity_3pm: float | None = Field(default=None, ge=0, le=100)
+    pressure_9am: float | None = Field(default=None, ge=950, le=1070)
+    pressure_3pm: float | None = Field(default=None, ge=950, le=1070)
+    cloud_9am: float | None = Field(default=None, ge=0, le=9)
+    cloud_3pm: float | None = Field(default=None, ge=0, le=9)
+    temp_9am: float | None = Field(default=None, ge=-20, le=60)
+    temp_3pm: float | None = Field(default=None, ge=-20, le=60)
+    rain_today: Literal["Yes", "No"] | None = None
 
     @model_validator(mode="after")
     def check_minimum_values(self):
@@ -136,6 +165,10 @@ class TrainInput(BaseModel):
     learning_rate: float = Field(default=0.05, gt=0, le=1)
     subsample: float = Field(default=0.9, gt=0, le=1)
     colsample_bytree: float = Field(default=0.9, gt=0, le=1)
+
+
+class LivePredictionInput(LocationBase):
+    pass
 
 
 class PredictionOutput(BaseModel):
@@ -203,3 +236,40 @@ def train_endpoint(features: TrainInput):
         return metrics
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=f"Required file not found: {e}") from e
+
+
+@app.post("/predict/live_data", response_model=PredictionOutput)
+def predict_live_endpoint(features: LivePredictionInput):
+    """
+    Predict tomorrow's rain using today's live weather from Open-Meteo.
+
+    Looks up coordinates for the location, fetches today's weather, and
+    feeds it into the same model used by /predict.
+    """
+
+    location = find_location(features.location)
+    if location is None:
+        raise HTTPException(
+            status_code=404, detail=f"No coordinates found for '{features.location}'."
+        )
+    try:
+        data = fetch_open_meteo_daily_payload(
+            location, date.today(), timeout_seconds=30, include_next_day=False
+        )
+    except OpenMeteoError as e:
+        raise HTTPException(
+            status_code=502, detail=f"Could not fetch live weather data: {e}"
+        ) from e
+    df = normalize_open_meteo_payloads([data])
+    if df["MinTemp"].isna().all():
+        raise HTTPException(
+            status_code=502,
+            detail=f"Weather data for today is not yet available for '{location.location}'.",
+        )
+    df = df.drop(columns=["Date", "RainTomorrow"])
+    records = df.to_dict(orient="records")
+    features_dict = records[0]
+    try:
+        return predict(features_dict)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=f"Required model not found: {e}.") from e

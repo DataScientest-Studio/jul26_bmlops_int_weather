@@ -70,14 +70,17 @@ def fetch_open_meteo_daily_payload(
     location: WeatherLocation,
     observation_date: date,
     timeout_seconds: int = 30,
+    include_next_day: bool = True,
 ) -> dict[str, Any]:
+    end_date = observation_date + timedelta(days=1) if include_next_day else observation_date
+
     response = _get_json(
         ARCHIVE_URL,
         {
             "latitude": location.latitude,
             "longitude": location.longitude,
             "start_date": observation_date.isoformat(),
-            "end_date": (observation_date + timedelta(days=1)).isoformat(),
+            "end_date": end_date.isoformat(),
             "hourly": ",".join(HOURLY_VARIABLES),
             "daily": ",".join(DAILY_VARIABLES),
             "timezone": location.timezone,
