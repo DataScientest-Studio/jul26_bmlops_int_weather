@@ -197,4 +197,6 @@ the most recent period, so we are always predicting forward in time).
   - `predict.py` script.
 - Create a **FastAPI** with two endpoints (`predict/` and `training/`) using the above scripts.
 
-**Next meeting**: Sep 4 at 5:00 PM.
+**Next meeting**: Sep 4 at 5:30 PM.
+
+Suggestion from Nicolas: https://github.com/minio/minio as local S3 bucket.
