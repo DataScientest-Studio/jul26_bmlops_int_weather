@@ -4,7 +4,7 @@ export
 LOCAL_ENV = UV_CACHE_DIR=.uv-cache
 DVC_ENV = $(LOCAL_ENV) DVC_NO_ANALYTICS=1 DVC_SITE_CACHE_DIR=.dvc/tmp/cache-home XDG_CACHE_HOME=.dvc/tmp/cache-home
 
-.PHONY: install sync lint format format-check test test-cov dvc-check-env dvc-config pull push repro merge-raw train validate evaluate predict fetch-open-meteo load-db check lock
+.PHONY: install sync lint format format-check test test-cov dvc-check-env dvc-config pull push repro merge-raw train validate evaluate predict fetch-open-meteo load-db check lock api
 
 install:
 	$(LOCAL_ENV) uv sync
@@ -75,3 +75,6 @@ check:
 	$(LOCAL_ENV) uv run ruff check .
 	$(LOCAL_ENV) uv run ruff format --check .
 	$(LOCAL_ENV) uv run pytest
+
+api:
+	$(LOCAL_ENV) uv run uvicorn weather_mlops.api.main:app --reload
