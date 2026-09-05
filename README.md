@@ -300,6 +300,22 @@ metrics, and prediction artifacts from Supabase Storage.
 `make repro` reruns the DAG from `dvc.yaml`. If nothing changed, DVC should
 report that every stage is unchanged.
 
+## Inference API
+
+A FastAPI service exposes the trained model for predictions and retraining.
+
+Endpoints:
+- `GET /health` reports whether the API is running and whether a trained model is available
+- `POST /predict` predicts rain tomorrow from manually provided weather features (`location` and at least 3 weather conditions are required. The remaining fields are optional and missing values are imputed by the trained pipeline)
+- `POST /predict/live_data` predicts rain tomorrow using live weather data fetched from Open-Meteo for the given location (only `location` is required)
+- `POST /train` retrains the model with configurable XGBoost hyperparameters and returns evaluation metrics
+
+Run locally:
+
+    make api
+
+Then open `http://127.0.0.1:8000/docs` for interactive API documentation.
+
 ## Useful Commands
 
 ```bash
@@ -314,6 +330,7 @@ make evaluate   # run evaluation directly
 make predict    # write sample prediction JSON
 make fetch-open-meteo # fetch Open-Meteo JSON and normalized CSV snapshots
 make load-db    # load raw weather rows and metadata into Supabase Postgres
+make api        # start inference API locally with auto-reload
 ```
 
 The one-time Kaggle helper is outside `src` because it is not part of the
@@ -383,5 +400,5 @@ will be handled in a later project stage.
 
 - Keep reproducible ML code inside `src/weather_mlops/...`.
 - Keep one-time local helpers inside `scripts/...`.
-- Add API/security/nginx, Docker/Docker Compose, Airflow orchestration, MLflow,
+- Add API security/nginx, Docker/Docker Compose, Airflow orchestration, MLflow,
   and monitoring only when those project stages start.

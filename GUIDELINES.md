@@ -84,10 +84,12 @@ the most recent period, so we are always predicting forward in time).
   - ✅ Store the data with a one-time-run Python script. // Update the scripts to store in the DB - Ziad — DONE 2026-08-31
 - Build and evaluate a baseline ML model:
   - ✅ Create 2 Python scripts: `training.py` and `predict.py`. // XGBoost - Ziad — DONE 2026-08-31
-- Implement a basic inference API:
-  - Create 2 endpoints: `training/` and `predict/`. // Gabriel + Thomas — IN REVIEW 2026-09-03
-    - Branch `feature/inference-api`, not merged. Works; needs input validation, `/train` fixes,
-      CI and a rebase before merging.
+- ✅ Implement a basic inference API:
+  - Create endpoints: `GET /health`, `POST /predict`, `POST /predict/live_data`, `POST /train`. // Gabriel + Thomas — DONE 2026-09-05
+    - Merged to `master`. Includes input validation (value bounds, location matching
+      against the trained model with typo suggestions), error handling, and CI
+      (ruff lint + format). `/predict/live_data` fetches live weather from
+      Open-Meteo instead of requiring manual input. Documented in README.
 
 ### Phase 2: Microservices, Tracking & Versioning — Deadline: Sep 20
 
