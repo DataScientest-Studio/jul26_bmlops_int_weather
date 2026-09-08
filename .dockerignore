@@ -1,0 +1,21 @@
+# things that should not go into the images
+.venv/
+.uv-cache/
+.ruff_cache/
+.pytest_cache/
+__pycache__/
+*.pyc
+.git/
+.github/
+.dvc/
+.env
+
+# the containers get these through volumes
+data/
+models/
+reports/
+
+tests/
+notes/
+*.md
+.DS_Store
