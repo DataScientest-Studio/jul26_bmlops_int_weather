@@ -54,6 +54,40 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+  mlflow:
+    build:
+      context: .
+      dockerfile: docker/mlflow/Dockerfile
+    image: weather-mlflow:latest
+    container_name: weather_mlflow
+    networks:
+      - weather_network
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./mlflow-data:/mlflow
+    command:
+      - server
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --backend-store-uri
+      - sqlite:////mlflow/mlflow.db
+      - --artifacts-destination
+      - file:///mlflow/artifacts
+      - --serve-artifacts
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 networks:
   weather_network:
