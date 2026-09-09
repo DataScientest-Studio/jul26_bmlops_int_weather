@@ -1,0 +1,59 @@
+# ingestion and trainer are jobs: they run once and stop. the api stays up.
+
+services:
+  ingestion:
+    build:
+      context: .
+      dockerfile: docker/ingestion/Dockerfile
+    image: weather-ingestion:latest
+    container_name: weather_ingestion
+    networks:
+      - weather_network
+    volumes:
+      - ./data:/app/data
+
+  trainer:
+    build:
+      context: .
+      dockerfile: docker/trainer/Dockerfile
+    image: weather-trainer:latest
+    container_name: weather_trainer
+    networks:
+      - weather_network
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./reports:/app/reports
+    depends_on:
+      ingestion:
+        # only start if the previous container exited with code 0
+        condition: service_completed_successfully
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/api/Dockerfile
+    image: weather-api:latest
+    container_name: weather_api
+    networks:
+      - weather_network
+    ports:
+      - "8000:8000"
+    volumes:
+      # read only, the api must not change the dataset
+      - ./data:/app/data:ro
+      # read and write, the /train endpoint saves a new model
+      - ./models:/app/models
+      - ./reports:/app/reports
+    depends_on:
+      trainer:
+        condition: service_completed_successfully
+    healthcheck:
+      # calls our own /health endpoint
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  weather_network:
