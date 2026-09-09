@@ -4,7 +4,7 @@ export
 LOCAL_ENV = UV_CACHE_DIR=.uv-cache
 DVC_ENV = $(LOCAL_ENV) DVC_NO_ANALYTICS=1 DVC_SITE_CACHE_DIR=.dvc/tmp/cache-home XDG_CACHE_HOME=.dvc/tmp/cache-home
 
-.PHONY: install sync lint format format-check test test-cov dvc-check-env dvc-config pull push repro merge-raw train validate evaluate predict fetch-open-meteo load-db check lock api
+.PHONY: install sync lint format format-check test test-cov dvc-check-env dvc-config pull push repro merge-raw train validate evaluate predict fetch-open-meteo load-db check lock api docker-build docker-up docker-down docker-logs docker-api
 
 install:
 	$(LOCAL_ENV) uv sync
@@ -78,3 +78,19 @@ check:
 
 api:
 	$(LOCAL_ENV) uv run uvicorn weather_mlops.api.main:app --reload
+
+docker-build:
+	docker compose build
+
+docker-up:
+	docker compose up
+
+docker-down:
+	docker compose down
+
+docker-logs:
+	docker compose logs -f api
+
+# start only the API, without rerunning ingestion and training
+docker-api:
+	docker compose up -d --no-deps api
