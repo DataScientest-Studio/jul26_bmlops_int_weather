@@ -98,7 +98,8 @@ the most recent period, so we are always predicting forward in time).
   - Implement data and model versioning using the MLflow Model Registry.
   - Compare performance after each run and tag the best model in MLflow.
   - At the end of the training script (or later via Airflow), load the previous version and compare it with the newly trained model.
-- Split the application into Docker-based microservices with simple orchestration using `docker-compose`. // Gabriel
+- ✅ Split the application into Docker-based microservices with simple orchestration using `docker-compose`. // Gabriel — DONE 2026-09-09; three services: `ingestion`, `trainer`, `api`
+  - **(OPTIONAL)** One container per ML phase (`preprocess`, `train`, `evaluate`) instead of a single `trainer`. // Suggestion from Vincent — Gabriel to implement optionally
 - Develop automatic model and component updates: // Gabriel + Ziad
   - Scheduled training: cron script, Jenkins, or Airflow (recommended but more complex). // Thomas - Airflow
 - ✅ Use **DVC** (without Git) to version datasets. // Ziad — DONE 2026-08-31; MLflow hash logging deferred to the later MLflow stage
@@ -162,6 +163,36 @@ the most recent period, so we are always predicting forward in time).
 | Microservices       | Docker + docker-compose                        |
 | CI/CD (optional)    | GitHub Actions                                 |
 | Scaling (optional)  | Kubernetes                                     |
+
+---
+
+## Docker Microservices
+
+`docker-compose.yml` runs three services, each with its own `Dockerfile` under
+`docker/`:
+
+| Service     | What it does                                        | Type                 |
+| ----------- | --------------------------------------------------- | -------------------- |
+| `ingestion` | Fetches Open-Meteo data and merges it with the seed  | batch job            |
+| `trainer`   | Preprocesses, trains and evaluates the model         | batch job            |
+| `api`       | Serves the FastAPI endpoints                         | long running, `:8000` |
+
+They exchange files through the `./data`, `./models` and `./reports` volumes,
+and `depends_on` makes each service start only after the previous one exits
+successfully.
+
+### Basic commands
+
+```bash
+make docker-build   # build the three images
+make docker-up      # run ingestion, then trainer, then the API
+make docker-logs    # follow the API logs
+make docker-down    # stop and remove the containers
+make docker-api     # start only the API, when the model already exists
+```
+
+The API is then available at `http://localhost:8000/docs`. No `.env` is needed:
+Open-Meteo works without an API key.
 
 ---
 
