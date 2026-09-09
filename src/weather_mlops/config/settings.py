@@ -29,6 +29,7 @@ class Settings(BaseSettings):
         PROJECT_ROOT / "data" / "predictions" / "sample_prediction.json"
     )
     model_path: Path = PROJECT_ROOT / "models" / "rain_classifier.joblib"
+    best_model_path: Path = PROJECT_ROOT / "models" / "best_model.joblib"
     dataset_metadata_path: Path = PROJECT_ROOT / "data" / "metadata" / "weatherAUS.json"
     train_metrics_path: Path = PROJECT_ROOT / "reports" / "metrics" / "train.json"
     validation_metrics_path: Path = PROJECT_ROOT / "reports" / "metrics" / "validation.json"

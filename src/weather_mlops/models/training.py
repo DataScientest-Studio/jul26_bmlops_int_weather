@@ -19,8 +19,6 @@ mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
 MLFLOW_EXPERIMENT_NAME = settings.mlflow_experiment_name
 MLFLOW_MODEL_NAME = settings.mlflow_model_name
 
-mlflow.set_experiment(MLFLOW_EXPERIMENT_NAME)
-
 
 def load_dataset_metadata() -> dict:
     with settings.dataset_metadata_path.open(
@@ -74,6 +72,8 @@ def train_model(
     print(f"Training samples: {len(X_train):,}")
 
     dataset_metadata = load_dataset_metadata()
+
+    mlflow.set_experiment(MLFLOW_EXPERIMENT_NAME)
 
     with mlflow.start_run() as run:
         run_id = run.info.run_id

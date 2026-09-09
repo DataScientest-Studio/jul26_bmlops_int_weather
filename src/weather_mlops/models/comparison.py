@@ -1,4 +1,5 @@
 import json
+import shutil
 
 import mlflow
 
@@ -102,6 +103,19 @@ def tag_model_version(
     )
 
 
+def promote_to_best(model_source_path=settings.model_path) -> None:
+    """
+    Copy the just-trained model to the path predict.py serves from.
+
+    Only called when a version has actually won the comparison, so the
+    served model always matches whichever version is tagged "best" in
+    the MLflow registry - not just whatever was trained most recently.
+    """
+
+    settings.best_model_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(model_source_path, settings.best_model_path)
+
+
 def clear_existing_best_tags(
     client: mlflow.MlflowClient,
     model_name: str,
@@ -190,6 +204,8 @@ def compare_models() -> None:
             status="best",
         )
 
+        promote_to_best()
+
         return
 
     # Don't compare the model against itself.
@@ -232,6 +248,8 @@ def compare_models() -> None:
             version=str(current_best.version),
             status="previous_best",
         )
+
+        promote_to_best()
 
         # Store comparison information on the new version.
         client.set_model_version_tag(

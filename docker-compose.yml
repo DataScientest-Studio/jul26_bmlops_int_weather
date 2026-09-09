@@ -52,6 +52,10 @@ services:
     depends_on:
       trainer:
         condition: service_completed_successfully
+      mlflow:
+        condition: service_healthy
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:8080
     healthcheck:
       # calls our own /health endpoint
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]

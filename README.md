@@ -331,6 +331,13 @@ make predict    # write sample prediction JSON
 make fetch-open-meteo # fetch Open-Meteo JSON and normalized CSV snapshots
 make load-db    # load raw weather rows and metadata into Supabase Postgres
 make api        # start inference API locally with auto-reload
+make docker-build   # build the three images
+make docker-up      # run ingestion, then trainer, then the API
+make docker-logs    # follow the API logs
+make docker-down    # stop and remove the containers
+make docker-api     # start only the API, when the model already exists
+make docker-ingest-train # to run ingest and train when the API and MLflow are up
+
 ```
 
 The one-time Kaggle helper is outside `src` because it is not part of the
@@ -402,3 +409,13 @@ will be handled in a later project stage.
 - Keep one-time local helpers inside `scripts/...`.
 - Add API security/nginx, Docker/Docker Compose, Airflow orchestration, MLflow,
   and monitoring only when those project stages start.
+
+
+## MLflow
+the models are tracked using MLflow. Running make ```docker-build``` followed by ```docker-up``` gets all containers running, including MLflow, which can then be accessed at http://localhost:8080.
+
+The best model is tagged with the status "best" on the following page: http://localhost:8080/#/models/weather-rainfall-classifier
+
+A newly trained model is tracked in training.py. Comparison of different models and, if required, changing of which model is the best model, happens in comparison.py.
+
+The API and predict.py have been altered to always use the best model. 

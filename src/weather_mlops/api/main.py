@@ -194,9 +194,10 @@ def health_check():
 
     This is used mostly by orchestration tools to verify
     the service is ready before routing traffic to it.
-    A missing model means /predict will fail until /train has been called
+    A missing model means /predict will fail until a model has been
+    trained and promoted to best by the comparison pipeline.
     """
-    if settings.model_path.exists():
+    if settings.best_model_path.exists():
         model_status = "A pretrained model is already loaded"
     else:
         model_status = "There is no pretrained model loaded"
@@ -226,8 +227,9 @@ def train_endpoint(features: TrainInput):
     Train a new rainfall classifier and return its evaluation metrics.
 
     Retrains the model on the current training data using the given
-    hyperparameters, saves it to disk, and clears the prediction cache so
-    /predict uses the newly trained model on the next call.
+    hyperparameters and registers it in MLflow as a new candidate version.
+    This does not change what /predict serves - a candidate only becomes
+    the served model once the comparison pipeline promotes it to best.
     """
     try:
         pipeline, metrics = train_model(**features.model_dump())

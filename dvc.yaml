@@ -71,7 +71,10 @@ stages:
       - reports/metrics/validation.json
       - src/weather_mlops/models/comparison.py
       - src/weather_mlops/config/settings.py
-      
+    outs:
+      - models/best_model.joblib:
+          persist: true
+
   evaluate:
     cmd: python -m weather_mlops.models.evaluation --x-data data/processed/X_test.csv --y-data data/processed/y_test.csv --model-path models/rain_classifier.joblib --metrics-output reports/metrics/evaluation.json --split-name test
     deps:

@@ -13,14 +13,15 @@ from weather_mlops.config.settings import settings
 
 @lru_cache(maxsize=1)
 def load_model() -> Pipeline:
-    """Load the trained model from disk."""
+    """Load the current best model from disk."""
 
-    if not settings.model_path.exists():
+    if not settings.best_model_path.exists():
         raise FileNotFoundError(
-            f"Model not found at {settings.model_path}. Run the training pipeline first."
+            f"Best model not found at {settings.best_model_path}. "
+            "Run the training and comparison pipeline first."
         )
 
-    return joblib.load(settings.model_path)
+    return joblib.load(settings.best_model_path)
 
 
 def predict(features: dict[str, Any]) -> dict[str, Any]:
