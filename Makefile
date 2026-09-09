@@ -94,3 +94,7 @@ docker-logs:
 # start only the API, without rerunning ingestion and training
 docker-api:
 	docker compose up -d --no-deps api
+
+# start ingestion and training without starting the API
+docker-ingest-train:
+	docker compose up -d --no-deps ingestion trainer

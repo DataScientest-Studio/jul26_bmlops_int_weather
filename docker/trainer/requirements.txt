@@ -6,3 +6,5 @@ xgboost==3.4.1
 joblib==1.5.3
 pydantic-settings==2.15.0
 python-dotenv==1.2.3
+mlflow==3.16.0
+

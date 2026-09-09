@@ -53,5 +53,12 @@ class Settings(BaseSettings):
     train_fraction: float = 0.7
     validation_fraction: float = 0.15
 
+    # MLflow
+    mlflow_tracking_uri: str = "http://localhost:8080"
+    mlflow_experiment_name: str = "weather-rainfall-classifier"
+    mlflow_model_name: str = "weather-rainfall-classifier"
+    mlflow_primary_metric: str = "validation_f1"
+    mlflow_run_metadata_path: Path = PROJECT_ROOT / "reports" / "mlflow_run.json"
+
 
 settings = Settings()

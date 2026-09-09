@@ -88,6 +88,10 @@ target/
 /data/processed/*
 /models/*.joblib
 /reports/metrics/
+/reports/mlflow_run.json
+
+# Local MLflow tracking store (backend db + artifacts) - regenerated per environment.
+/mlflow-data/
 
 # Mac OS-specific storage files
 .DS_Store

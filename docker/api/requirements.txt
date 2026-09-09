@@ -10,3 +10,4 @@ requests==2.34.2
 pydantic==2.13.4
 pydantic-settings==2.15.0
 python-dotenv==1.2.3
+mlflow==3.16.0
