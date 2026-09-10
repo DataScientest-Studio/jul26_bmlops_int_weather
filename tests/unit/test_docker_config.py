@@ -23,21 +23,21 @@ def test_every_service_dockerfile_exists():
 def test_the_three_expected_services_are_there():
     services = load_services()
 
-    assert set(services) == {"ingestion", "preprocess", "api"}
+    assert sorted(services) == ["api", "ingestion", "preprocess"]
     assert "trainer" not in services, "the trainer service was replaced by preprocess"
 
 
 def test_preprocess_runs_after_ingestion():
     depends_on = load_services()["preprocess"]["depends_on"]
 
-    assert set(depends_on) == {"ingestion"}
+    assert list(depends_on) == ["ingestion"]
     assert depends_on["ingestion"]["condition"] == "service_completed_successfully"
 
 
 def test_api_starts_after_preprocessing():
     depends_on = load_services()["api"]["depends_on"]
 
-    assert set(depends_on) == {"preprocess"}
+    assert list(depends_on) == ["preprocess"]
     assert depends_on["preprocess"]["condition"] == "service_completed_successfully"
 
 
@@ -46,3 +46,11 @@ def test_api_cannot_write_to_the_dataset():
     volumes = load_services()["api"]["volumes"]
 
     assert "./data:/app/data:ro" in volumes
+
+
+def test_release_workflow_pushes_every_service():
+    """release.yml lists the services by hand, so it can drift from compose."""
+    release = (PROJECT_ROOT / ".github" / "workflows" / "release.yml").read_text()
+
+    for name in load_services():
+        assert name in release, f"{name} is not pushed by release.yml"

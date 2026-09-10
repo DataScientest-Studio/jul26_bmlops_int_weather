@@ -1,0 +1,39 @@
+name: Release
+
+# pushes the three images to the GitHub Container Registry, only from master
+on:
+  push:
+    branches: [master]
+
+env:
+  # ghcr.io only accepts lowercase names
+  REGISTRY: ghcr.io/datascientest-studio/jul26_bmlops_int_weather
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to the registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build the images
+        run: docker compose build
+
+      - name: Push the images
+        run: |
+          for service in ingestion preprocess api; do
+            docker tag "weather-$service:latest" "$REGISTRY/$service:latest"
+            docker push "$REGISTRY/$service:latest"
+          done
