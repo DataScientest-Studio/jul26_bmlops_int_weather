@@ -103,16 +103,16 @@ the most recent period, so we are always predicting forward in time).
 - Develop automatic model and component updates: // Gabriel + Ziad
   - Scheduled training: cron script, Jenkins, or Airflow (recommended but more complex). // Thomas - Airflow
 - ✅ Use **DVC** (without Git) to version datasets. // Ziad — DONE 2026-08-31; MLflow hash logging deferred to the later MLflow stage
-- **(OPTIONAL)** Implement unit tests.
+- **(OPTIONAL)** Implement unit tests. // Run inside the CI/CD or docker container // used for API tests (including authorization and authentification). //Thomas + Gabriel
 - **(OPTIONAL)** CI/CD pipeline with GitHub Actions: (Recommendation: only master branch)
   - `ci.yaml` (always): Linter + Unit tests + Build Docker images.
-  - `release.yaml` (only on master): Linter + Unit tests + Build & deploy images to Docker Hub.
+  - `release.yaml` (only on master): Linter + Unit tests + Build & deploy images to Docker Hub (@Gabriel to add - only docker tests are enough).
 - **(OPTIONAL)** Optimize and secure the API (basic auth or OAuth2). // Gabriel + Ziad = [NGINX] - Sprint 1 API security module - review the slides from master class - check optional course
 - **(OPTIONAL)** Implement scalability with Kubernetes. // Thomas
 
 ### Phase 3: Monitoring & Maintenance — Deadline: Oct 2
 
-- Implement drift detection with **Evidently** in the Airflow pipeline:
+- Implement drift detection with **Evidently** in the Airflow pipeline: // Ziad
   - **Training**:
     - Reference dataset: historical dataset.
     - Current dataset: recent dataset.
@@ -121,13 +121,13 @@ the most recent period, so we are always predicting forward in time).
   - **Prediction**:
     - Store each prediction along with its features in the database.
     - Add an automated DAG to check for data drift.
-    - Track generated report and metrics in MLflow.
+    - Track generated report and metrics in MLflow. // Jonathan
     - Trigger the training DAG if needed.
-- API performance monitoring with **Prometheus / Grafana**:
+- API performance monitoring with **Prometheus / Grafana**: // Thomas
   - Define alerts.
   - Training trigger via built-in Grafana webhook.
-- Create a simple **Streamlit** application to interact with the API and make predictions.
-- Finish the repo's technical documentation.
+- Create a simple **Streamlit** application to interact with the API and make predictions. // Ziad
+- Finish the repo's technical documentation. // Gabriel (maybe use WIKI - README (first overview - talk about the project setup / goal + setup + technologies) - 
 
 ### Final Presentation (Defense) — Oct 13
 
@@ -234,7 +234,7 @@ Open-Meteo works without an API key.
 ## Meetings with the Mentor
 
 - Sep 4 at 5:30 PM.
-- Sep 18 at 2:00 PM.
+- Sep 17 at 12:45 PM.
 
 ## Internal Meetings
 
