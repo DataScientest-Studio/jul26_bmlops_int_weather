@@ -106,7 +106,7 @@ the most recent period, so we are always predicting forward in time).
 - ✅ Use **DVC** (without Git) to version datasets. // Ziad — DONE 2026-08-31; MLflow hash logging deferred to the later MLflow stage
 - **(OPTIONAL)** Implement unit tests. // Run inside the CI/CD or docker container // used for API tests (including authorization and authentification). //Thomas + Gabriel
 - **(OPTIONAL)** CI/CD pipeline with GitHub Actions: (Recommendation: only master branch)
-  - `ci.yaml` (always): Linter + Unit tests + Build Docker images.
+  - ✅ `ci.yaml` (always): Linter + Unit tests + Build Docker images. // Gabriel — DONE 2026-09-10
   - `release.yaml` (only on master): Linter + Unit tests + Build & deploy images to Docker Hub (@Gabriel to add - only docker tests are enough).
 - **(OPTIONAL)** Optimize and secure the API (basic auth or OAuth2). // Gabriel + Ziad = [NGINX] - Sprint 1 API security module - review the slides from master class - check optional course
 - **(OPTIONAL)** Implement scalability with Kubernetes. // Thomas

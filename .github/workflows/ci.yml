@@ -33,3 +33,14 @@ jobs:
 
       - name: Run tests
         run: uv run pytest
+
+  # builds the three images so a broken Dockerfile is caught here, not on a laptop
+  docker:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build the images
+        run: docker compose build
