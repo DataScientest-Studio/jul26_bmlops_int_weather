@@ -4,7 +4,11 @@ export
 LOCAL_ENV = UV_CACHE_DIR=.uv-cache
 DVC_ENV = $(LOCAL_ENV) DVC_NO_ANALYTICS=1 DVC_SITE_CACHE_DIR=.dvc/tmp/cache-home XDG_CACHE_HOME=.dvc/tmp/cache-home
 
-.PHONY: install sync lint format format-check test test-cov dvc-check-env dvc-config pull push repro merge-raw train validate evaluate predict fetch-open-meteo load-db check lock api docker-build docker-up docker-down docker-logs docker-api
+# where the api is listening, used by the train target below
+API_URL ?= http://localhost:8000
+TRAIN_PARAMS ?= {}
+
+.PHONY: install sync lint format format-check test test-cov dvc-check-env dvc-config pull push repro merge-raw preprocess train validate evaluate predict fetch-open-meteo load-db check lock api docker-build docker-up docker-down docker-logs docker-api
 
 install:
 	$(LOCAL_ENV) uv sync
@@ -52,8 +56,17 @@ repro:
 merge-raw:
 	$(LOCAL_ENV) uv run python -m weather_mlops.data.merge_raw
 
+preprocess:
+	$(LOCAL_ENV) uv run python -m weather_mlops.data.preprocess
+
+# asks the running api to retrain. change the settings with, for example:
+#   make train TRAIN_PARAMS='{"n_estimators": 400, "max_depth": 6}'
 train:
-	$(LOCAL_ENV) uv run python -m weather_mlops.models.training
+	@curl -fsS "$(API_URL)/health" >/dev/null 2>&1 || \
+		(echo "No API at $(API_URL). Start it first with 'make api' or 'make docker-up'."; exit 1)
+	@curl -fsS -X POST "$(API_URL)/train" \
+		-H "Content-Type: application/json" \
+		-d '$(TRAIN_PARAMS)' | python3 -m json.tool
 
 validate:
 	$(LOCAL_ENV) uv run python -m weather_mlops.models.evaluation --x-data data/processed/X_validation.csv --y-data data/processed/y_validation.csv --metrics-output reports/metrics/validation.json --split-name validation
@@ -91,6 +104,6 @@ docker-down:
 docker-logs:
 	docker compose logs -f api
 
-# start only the API, without rerunning ingestion and training
+# start only the API, without rerunning ingestion and preprocessing
 docker-api:
 	docker compose up -d --no-deps api

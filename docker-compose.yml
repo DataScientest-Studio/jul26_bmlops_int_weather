@@ -1,4 +1,5 @@
-# ingestion and trainer are jobs: they run once and stop. the api stays up.
+# ingestion and preprocess are jobs: they run once and stop. the api stays up.
+# there is no training job here: training happens only when someone calls POST /train.
 
 services:
   ingestion:
@@ -12,18 +13,17 @@ services:
     volumes:
       - ./data:/app/data
 
-  trainer:
+  preprocess:
     build:
       context: .
-      dockerfile: docker/trainer/Dockerfile
-    image: weather-trainer:latest
-    container_name: weather_trainer
+      dockerfile: docker/preprocess/Dockerfile
+    image: weather-preprocess:latest
+    container_name: weather_preprocess
     networks:
       - weather_network
     volumes:
+      # read and write, this job writes the train/validation/test splits
       - ./data:/app/data
-      - ./models:/app/models
-      - ./reports:/app/reports
     depends_on:
       ingestion:
         # only start if the previous container exited with code 0
@@ -46,7 +46,7 @@ services:
       - ./models:/app/models
       - ./reports:/app/reports
     depends_on:
-      trainer:
+      preprocess:
         condition: service_completed_successfully
     healthcheck:
       # calls our own /health endpoint
