@@ -239,6 +239,6 @@ Open-Meteo works without an API key.
 ## Internal Meetings
 
 - Aug 31 at 10:00 AM.
-- Sep 10 at 10:00 AM.
+- Sep 10 at 10:00 AM — [meeting notes](meetings/internal_meetings/20260910_InternalMeeting_1000AM_CET.md)
 
 Suggestion from Nicolas: https://github.com/minio/minio as local S3 bucket.
