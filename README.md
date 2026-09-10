@@ -324,7 +324,8 @@ make repro      # run the DVC pipeline
 make pull       # pull DVC artifacts from Supabase Storage
 make push       # push DVC artifacts to Supabase Storage
 make merge-raw  # merge Kaggle seed data with incremental raw snapshots
-make train      # run training directly
+make preprocess # build the train/validation/test splits
+make train      # ask the running API to retrain (POST /train)
 make validate   # evaluate the model on the validation split
 make evaluate   # run evaluation directly
 make predict    # write sample prediction JSON

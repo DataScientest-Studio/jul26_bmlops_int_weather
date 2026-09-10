@@ -98,8 +98,9 @@ the most recent period, so we are always predicting forward in time).
   - Implement data and model versioning using the MLflow Model Registry.
   - Compare performance after each run and tag the best model in MLflow.
   - At the end of the training script (or later via Airflow), load the previous version and compare it with the newly trained model.
-- ✅ Split the application into Docker-based microservices with simple orchestration using `docker-compose`. // Gabriel — DONE 2026-09-09; three services: `ingestion`, `trainer`, `api`
-  - **(OPTIONAL)** One container per ML phase (`preprocess`, `train`, `evaluate`) instead of a single `trainer`. // Suggestion from Vincent — Gabriel to implement optionally
+- ✅ Split the application into Docker-based microservices with simple orchestration using `docker-compose`. // Gabriel — DONE 2026-09-09; three services: `ingestion`, `preprocess`, `api`
+  - ✅ Training removed from container startup and from the Makefile — the model is trained only via `POST /train`. // Gabriel — DONE 2026-09-10, agreed in the Sep 10 internal meeting
+  - **(OPTIONAL)** One container per ML phase (`preprocess`, `train`, `evaluate`) instead of a single `trainer`. // Suggestion from Vincent — `preprocess` is now its own container; `train` runs in the API
 - Develop automatic model and component updates: // Gabriel + Ziad
   - Scheduled training: cron script, Jenkins, or Airflow (recommended but more complex). // Thomas - Airflow
 - ✅ Use **DVC** (without Git) to version datasets. // Ziad — DONE 2026-08-31; MLflow hash logging deferred to the later MLflow stage
@@ -171,21 +172,22 @@ the most recent period, so we are always predicting forward in time).
 `docker-compose.yml` runs three services, each with its own `Dockerfile` under
 `docker/`:
 
-| Service     | What it does                                        | Type                 |
-| ----------- | --------------------------------------------------- | -------------------- |
-| `ingestion` | Fetches Open-Meteo data and merges it with the seed  | batch job            |
-| `trainer`   | Preprocesses, trains and evaluates the model         | batch job            |
-| `api`       | Serves the FastAPI endpoints                         | long running, `:8000` |
+| Service      | What it does                                        | Type                  |
+| ------------ | --------------------------------------------------- | --------------------- |
+| `ingestion`  | Fetches Open-Meteo data and merges it with the seed | batch job             |
+| `preprocess` | Builds the train/validation/test splits             | batch job             |
+| `api`        | Serves the endpoints, including training            | long running, `:8000` |
 
-They exchange files through the `./data`, `./models` and `./reports` volumes,
-and `depends_on` makes each service start only after the previous one exits
+`ingestion` and `preprocess` share the `./data` volume; the API also mounts
+`./models` and `./reports`, because `POST /train` is what writes the new model.
+`depends_on` makes each service start only after the previous one exits
 successfully.
 
 ### Basic commands
 
 ```bash
 make docker-build   # build the three images
-make docker-up      # run ingestion, then trainer, then the API
+make docker-up      # run ingestion, then preprocess, then the API
 make docker-logs    # follow the API logs
 make docker-down    # stop and remove the containers
 make docker-api     # start only the API, when the model already exists
@@ -193,6 +195,14 @@ make docker-api     # start only the API, when the model already exists
 
 The API is then available at `http://localhost:8000/docs`. No `.env` is needed:
 Open-Meteo works without an API key.
+
+**Training is never automatic.** No container trains on startup — the model is
+trained only through the API, which is also how Airflow will trigger it:
+
+```bash
+make train          # POST /train against the running API
+curl -X POST http://localhost:8000/train -H "Content-Type: application/json" -d '{}'
+```
 
 ---
 
