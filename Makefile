@@ -62,11 +62,7 @@ preprocess:
 # asks the running api to retrain. change the settings with, for example:
 #   make train TRAIN_PARAMS='{"n_estimators": 400, "max_depth": 6}'
 train:
-	@curl -fsS "$(API_URL)/health" >/dev/null 2>&1 || \
-		(echo "No API at $(API_URL). Start it first with 'make api' or 'make docker-up'."; exit 1)
-	@curl -fsS -X POST "$(API_URL)/train" \
-		-H "Content-Type: application/json" \
-		-d '$(TRAIN_PARAMS)' | python3 -m json.tool
+	curl --fail --silent --show-error -X POST "$(API_URL)/train" -H "Content-Type: application/json" -d '$(TRAIN_PARAMS)'
 
 validate:
 	$(LOCAL_ENV) uv run python -m weather_mlops.models.evaluation --x-data data/processed/X_validation.csv --y-data data/processed/y_validation.csv --metrics-output reports/metrics/validation.json --split-name validation

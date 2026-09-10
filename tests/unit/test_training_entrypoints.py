@@ -20,7 +20,7 @@ def test_makefile_never_runs_the_training_module_directly():
 def test_makefile_train_target_calls_the_api():
     makefile = (PROJECT_ROOT / "Makefile").read_text()
 
-    assert 'curl -fsS -X POST "$(API_URL)/train"' in makefile
+    assert '-X POST "$(API_URL)/train"' in makefile
 
 
 def test_no_docker_entrypoint_runs_the_training_module():
