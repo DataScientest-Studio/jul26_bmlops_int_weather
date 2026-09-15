@@ -1,0 +1,114 @@
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap");
+
+html, body, [data-testid="stAppViewContainer"], .stApp {
+    background: #061018;
+    color: #E8EEF2;
+}
+
+[data-testid="stHeader"],
+[data-testid="stToolbar"],
+#MainMenu,
+footer {
+    display: none !important;
+}
+
+.block-container {
+    padding-top: 1.2rem;
+    max-width: 960px;
+}
+
+.kicker {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.85rem;
+    color: #7EC8D4;
+    margin-bottom: 0.2rem;
+}
+
+h1 {
+    font-family: "IBM Plex Sans", sans-serif !important;
+    font-weight: 600 !important;
+    font-size: clamp(2rem, 4vw, 3rem) !important;
+    color: #E8EEF2 !important;
+    max-width: 14ch;
+    margin-bottom: 1.2rem !important;
+}
+
+.lede {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-size: 1.15rem;
+    max-width: 40ch;
+    color: #B7C4CC;
+}
+
+.pipe {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 0 0 1.4rem;
+}
+
+.node {
+    font-family: "IBM Plex Sans", sans-serif;
+    background: #123044;
+    border-left: 4px solid #F2C14E;
+    padding: 0.85rem 1rem;
+    min-width: 7rem;
+}
+
+.store-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    font-family: "IBM Plex Sans", sans-serif;
+}
+
+.store-grid h2 {
+    font-size: 1rem;
+    color: #7EC8D4;
+    margin-bottom: 0.6rem;
+}
+
+.store-grid code, code {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.92rem;
+    color: #F2C14E;
+}
+
+.talk-notes {
+    font-family: "IBM Plex Sans", sans-serif;
+    color: #B7C4CC;
+    max-width: 52ch;
+    padding-left: 1.1rem;
+}
+
+.forecast strong {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-size: 2.4rem;
+    display: block;
+}
+
+.forecast span {
+    font-family: "IBM Plex Mono", monospace;
+    color: #7EC8D4;
+}
+
+.stButton button {
+    border-radius: 0 !important;
+    background: #F2C14E !important;
+    color: #061018 !important;
+    border: 0 !important;
+    font-family: "IBM Plex Sans", sans-serif !important;
+}
+
+@media (max-width: 700px) {
+    .store-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    * {
+        transition: none !important;
+        animation: none !important;
+    }
+}

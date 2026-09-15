@@ -1,5 +1,7 @@
 import argparse
 import json
+import tempfile
+import threading
 from pathlib import Path
 
 import joblib
@@ -8,8 +10,35 @@ from sklearn.pipeline import Pipeline
 from xgboost import XGBClassifier
 
 from weather_mlops.config.settings import settings
+from weather_mlops.data.catalog import current_git_commit
+from weather_mlops.data.manifest import verify_processed_manifest
 from weather_mlops.data.preprocess import TARGET_COLUMN, build_preprocessor
 from weather_mlops.models.evaluation import evaluate_classifier
+
+_TRAIN_LOCK = threading.Lock()
+
+
+def load_verified_training_inputs(
+    x_train_path=settings.x_train_path,
+    y_train_path=settings.y_train_path,
+) -> tuple[Path, Path, dict]:
+    """Require a matching processed manifest before any model fit.
+
+    The six CSVs and manifest.json are one input set. A missing or stale
+    manifest is rejected so training cannot record an old dataset identity.
+    """
+
+    x_train_path = Path(x_train_path)
+    y_train_path = Path(y_train_path)
+    processed_dir = x_train_path.parent
+    if y_train_path.parent.resolve() != processed_dir.resolve():
+        raise FileNotFoundError("X_train and y_train must live next to manifest.json")
+    if x_train_path.name != "X_train.csv" or y_train_path.name != "y_train.csv":
+        raise ValueError(
+            "Training files must be X_train.csv and y_train.csv next to the verified manifest"
+        )
+    manifest = verify_processed_manifest(processed_dir)
+    return x_train_path, y_train_path, manifest
 
 
 def train_model(
@@ -25,6 +54,36 @@ def train_model(
 ) -> tuple[Pipeline, dict[str, float]]:
     """Train and evaluate the XGBoost rainfall classifier."""
 
+    with _TRAIN_LOCK:
+        return _train_model_unlocked(
+            x_train_path=x_train_path,
+            y_train_path=y_train_path,
+            model_output_path=model_output_path,
+            metrics_output_path=metrics_output_path,
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            learning_rate=learning_rate,
+            subsample=subsample,
+            colsample_bytree=colsample_bytree,
+        )
+
+
+def _train_model_unlocked(
+    *,
+    x_train_path,
+    y_train_path,
+    model_output_path,
+    metrics_output_path,
+    n_estimators: int,
+    max_depth: int,
+    learning_rate: float,
+    subsample: float,
+    colsample_bytree: float,
+) -> tuple[Pipeline, dict[str, float]]:
+    x_train_path, y_train_path, manifest = load_verified_training_inputs(
+        x_train_path,
+        y_train_path,
+    )
     X_train = pd.read_csv(x_train_path)
     y_train = pd.read_csv(y_train_path)[TARGET_COLUMN]
 
@@ -71,11 +130,21 @@ def train_model(
     for name, value in metrics.items():
         print(f"  {name:<10}: {value:.4f}")
 
-    model_output_path.parent.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-    joblib.dump(pipeline, model_output_path)
+    model_output_path = Path(model_output_path)
+    metrics_output_path = Path(metrics_output_path)
+    model_output_path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        dir=model_output_path.parent,
+        suffix=".joblib.tmp",
+        delete=False,
+    ) as handle:
+        tmp_path = Path(handle.name)
+    try:
+        joblib.dump(pipeline, tmp_path)
+        tmp_path.replace(model_output_path)
+    finally:
+        if tmp_path.exists():
+            tmp_path.unlink(missing_ok=True)
 
     metrics_output_path.parent.mkdir(parents=True, exist_ok=True)
     metrics_output_path.write_text(
@@ -83,6 +152,11 @@ def train_model(
             {
                 "train_rows": len(X_train),
                 "scale_pos_weight": scale_pos_weight,
+                "dataset_sha256": manifest["sha256"],
+                "parent_sha256": manifest.get("parent_sha256"),
+                "preprocessing_version": manifest.get("preprocessing_version"),
+                "preprocess_git_commit": manifest.get("git_commit"),
+                "git_commit": current_git_commit(),
                 **{f"train_{name}": value for name, value in metrics.items()},
             },
             indent=2,

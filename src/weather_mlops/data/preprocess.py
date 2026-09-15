@@ -11,6 +11,8 @@ from weather_mlops.config.settings import settings
 
 TARGET_COLUMN = "RainTomorrow"
 DATE_COLUMN = "Date"
+LOCATION_COLUMN = "Location"
+PREPROCESS_VERSION = "2026.09.15"
 
 
 def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
@@ -32,7 +34,10 @@ def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     df = df.dropna(subset=[TARGET_COLUMN])
     df[TARGET_COLUMN] = df[TARGET_COLUMN].astype(int)
 
-    return df.sort_values(DATE_COLUMN).reset_index(drop=True)
+    sort_columns = [DATE_COLUMN]
+    if LOCATION_COLUMN in df.columns:
+        sort_columns.append(LOCATION_COLUMN)
+    return df.sort_values(sort_columns).reset_index(drop=True)
 
 
 def split_features_target(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
@@ -57,12 +62,20 @@ def temporal_train_validation_test_split(
         raise ValueError("train_fraction + validation_fraction must be less than 1.")
 
     cleaned = clean_dataframe(df)
-    train_end = int(len(cleaned) * train_fraction)
-    validation_end = int(len(cleaned) * (train_fraction + validation_fraction))
+    unique_dates = list(cleaned[DATE_COLUMN].drop_duplicates().sort_values())
+    n_dates = len(unique_dates)
+    train_n = int(n_dates * train_fraction)
+    validation_n = int(n_dates * validation_fraction)
+    if train_n < 1 or validation_n < 1 or train_n + validation_n >= n_dates:
+        raise ValueError("Not enough distinct dates to form train, validation, and test splits.")
 
-    train_df = cleaned.iloc[:train_end]
-    validation_df = cleaned.iloc[train_end:validation_end]
-    test_df = cleaned.iloc[validation_end:]
+    train_dates = set(unique_dates[:train_n])
+    validation_dates = set(unique_dates[train_n : train_n + validation_n])
+    test_dates = set(unique_dates[train_n + validation_n :])
+
+    train_df = cleaned[cleaned[DATE_COLUMN].isin(train_dates)]
+    validation_df = cleaned[cleaned[DATE_COLUMN].isin(validation_dates)]
+    test_df = cleaned[cleaned[DATE_COLUMN].isin(test_dates)]
 
     X_train, y_train = split_features_target(train_df)
     X_validation, y_validation = split_features_target(validation_df)
@@ -120,6 +133,9 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    from weather_mlops.data.manifest import build_processed_manifest, write_processed_manifest
+    from weather_mlops.data.versioning import hash_file
+
     args = parse_args()
     dataframe = pd.read_csv(args.input)
     X_train, X_validation, X_test, y_train, y_validation, y_test = (
@@ -144,6 +160,16 @@ def main() -> None:
         output_path = args.output_dir / filename
         output.to_csv(output_path, index=False)
         print(f"Wrote {len(output):,} rows to {output_path}")
+
+    parent_sha256 = hash_file(args.input, "sha256") if args.input.exists() else None
+    manifest = build_processed_manifest(
+        args.output_dir,
+        parent_sha256=parent_sha256,
+        train_fraction=args.train_fraction,
+        validation_fraction=args.validation_fraction,
+    )
+    manifest_path = write_processed_manifest(manifest, args.output_dir / "manifest.json")
+    print(f"Wrote processed manifest {manifest_path} sha256={manifest['sha256']}")
 
 
 if __name__ == "__main__":

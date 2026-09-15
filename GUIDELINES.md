@@ -109,8 +109,8 @@ the most recent period, so we are always predicting forward in time).
   - ✅ `ci.yaml` (always): Linter + Unit tests + Build Docker images. // Gabriel — DONE 2026-09-10
   - ✅ `release.yaml` (only on master): builds and pushes the three images to the **GitHub Container Registry** (`ghcr.io`) instead of Docker Hub — approved by Nicolas on Slack 2026-09-10. // Gabriel — DONE 2026-09-10
 - **(OPTIONAL)** Optimize and secure the API (basic auth or OAuth2). // Gabriel + Ziad = [NGINX] - Sprint 1 API security module - review the slides from master class - check optional course
-  - Basic auth added on `/predict`, `/predict/live_data`, `/train`. `/health` stays open for the docker healthcheck. Configured through `API_AUTH_USER` / `API_AUTH_PASSWORD` in `.env`. // Gabriel
-  - TODO: NGINX layer (reverse proxy, IP filtering) — separate workstream.
+  - ✅ Basic auth on `/predict`, `/predict/live_data`, `/train`. `/health` stays open for the docker healthcheck. Credentials live in Vault (`API_AUTH_USER` / `API_AUTH_PASSWORD`); local `.env` is only `SUPABASE_URL` + `SUPABASE_KEY`. // Gabriel + Ziad
+  - ✅ Nginx gateway (TLS, HTTP→HTTPS, per-IP rate limits on predict and `/train`). Opt-in Compose profile `gateway`. // Ziad
 - **(OPTIONAL)** Implement scalability with Kubernetes. // Thomas
 
 ### Phase 3: Monitoring & Maintenance — Deadline: Oct 2
@@ -188,22 +188,23 @@ successfully.
 ### Basic commands
 
 ```bash
-make docker-build   # build the three images
-make docker-up      # run ingestion, then preprocess, then the API
-make docker-logs    # follow the API logs
-make docker-down    # stop and remove the containers
-make docker-api     # start only the API, when the model already exists
+make build          # build images
+make up             # ingestion → preprocess → API, detached
+make logs           # follow API logs
+make down           # stop and remove the containers
+make api            # API only, when the model already exists
+make test           # ruff + pytest in the test container
 ```
 
-The API is then available at `http://localhost:8000/docs`. No `.env` is needed:
-Open-Meteo works without an API key.
+The API is then available at `http://127.0.0.1:8000/docs`. Local `.env` needs
+`SUPABASE_URL` and `SUPABASE_KEY`; API basic auth is hydrated from Vault.
 
 **Training is never automatic.** No container trains on startup — the model is
 trained only through the API, which is also how Airflow will trigger it:
 
 ```bash
-make train          # POST /train against the running API
-curl -X POST http://localhost:8000/train -H "Content-Type: application/json" -d '{}'
+make api            # detached
+make train          # POST /train against the running API container
 ```
 
 ---

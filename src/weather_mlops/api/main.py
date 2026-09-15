@@ -1,5 +1,7 @@
 import difflib
 import os
+import secrets
+from contextlib import asynccontextmanager
 from datetime import date
 from functools import lru_cache
 from typing import Literal
@@ -18,6 +20,7 @@ from weather_mlops.data.open_meteo import (
 )
 from weather_mlops.models.predict import load_model, predict
 from weather_mlops.models.training import train_model
+from weather_mlops.security.vault import AUTH_SETTINGS, hydrate_runtime_secrets
 
 WindDirection = Literal[
     "N",
@@ -186,16 +189,20 @@ class TrainOutput(BaseModel):
     roc_auc: float
 
 
-# Basic auth + a simple in-process rate limit.
-# The API was open to anyone on the network, which is fine for a local demo but
-# unsafe once the Streamlit app, MLflow, or any external service calls it.
-#
-# We use HTTPBasic because it is one of the things the FastAPI module shows in
-# the course, and it matches what the team is supposed to demo in the defense:
-# the request needs a username and a password, otherwise it gets 401.
-basic_security = HTTPBasic(auto_error=False)
-# Basic auth check for /predict, /predict/live_data and /train.
-# /health is left open so docker compose can healthcheck the container.
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    hydrate_runtime_secrets(
+        names=tuple(name for name, _attr in AUTH_SETTINGS),
+        required=("API_AUTH_USER", "API_AUTH_PASSWORD"),
+    )
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
+
+# HTTP Basic on /predict, /predict/live_data and /train.
+# Rate limits live in Nginx (`make gateway`), not in FastAPI.
+# /health stays open so docker compose can healthcheck the container.
 basic_security = HTTPBasic(auto_error=False)
 
 
@@ -204,8 +211,8 @@ def require_auth(credentials: HTTPBasicCredentials | None = Depends(basic_securi
 
     FastAPI passes the parsed credentials through Depends. We read
     API_AUTH_USER / API_AUTH_PASSWORD from the environment at request time so
-    a missing or empty value is treated as misconfiguration (503) and the test
-    suite can change them with monkeypatch.
+    tests can monkeypatch them. The API lifespan copies those names from Vault
+    into the environment when they are not already set.
     """
     expected_user = os.environ.get("API_AUTH_USER")
     expected_password = os.environ.get("API_AUTH_PASSWORD")
@@ -222,15 +229,14 @@ def require_auth(credentials: HTTPBasicCredentials | None = Depends(basic_securi
             headers={"WWW-Authenticate": 'Basic realm="weather-mlops"'},
         )
 
-    if credentials.username != expected_user or credentials.password != expected_password:
+    user_ok = secrets.compare_digest(credentials.username, expected_user)
+    password_ok = secrets.compare_digest(credentials.password, expected_password)
+    if not (user_ok and password_ok):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Wrong username or password.",
             headers={"WWW-Authenticate": 'Basic realm="weather-mlops"'},
         )
-
-
-app = FastAPI()
 
 
 @app.get("/health")
@@ -249,7 +255,12 @@ def health_check():
     else:
         model_status = "There is no pretrained model loaded"
 
-    return {"status": "This API is running", "model_status": model_status}
+    auth_configured = bool(os.environ.get("API_AUTH_USER") and os.environ.get("API_AUTH_PASSWORD"))
+    return {
+        "status": "This API is running",
+        "model_status": model_status,
+        "auth_configured": auth_configured,
+    }
 
 
 @app.post("/predict", response_model=PredictionOutput)
@@ -290,6 +301,8 @@ def train_endpoint(
         return metrics
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=f"Required file not found: {e}") from e
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
 
 
 @app.post("/predict/live_data", response_model=PredictionOutput)

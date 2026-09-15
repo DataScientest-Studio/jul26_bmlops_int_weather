@@ -1,0 +1,5 @@
+outs:
+- md5: 6d6f5418c4b74f4c6214b923f60658c3
+  size: 440992
+  hash: md5
+  path: rain_classifier.joblib

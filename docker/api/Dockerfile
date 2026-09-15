@@ -6,8 +6,11 @@ COPY docker/api/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY src/ ./src/
+COPY scripts/ ./scripts/
 COPY references/ ./references/
 
+ARG GIT_COMMIT=
+ENV GIT_COMMIT=$GIT_COMMIT
 ENV PYTHONPATH=/app/src
 
 EXPOSE 8000

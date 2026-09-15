@@ -4,6 +4,7 @@ import subprocess
 from pathlib import Path
 
 from weather_mlops.config.settings import PROJECT_ROOT, settings
+from weather_mlops.security.vault import S3_SETTINGS, hydrate_runtime_secrets
 
 
 def parse_args() -> argparse.Namespace:
@@ -18,15 +19,22 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    hydrate_runtime_secrets(
+        names=tuple(name for name, _attr in S3_SETTINGS),
+        required=("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"),
+    )
     args = parse_args()
 
     if not args.endpoint_url:
         raise ValueError(
-            "SUPABASE_S3_ENDPOINT must be set, for example "
-            "https://<project-ref>.storage.supabase.co/storage/v1/s3"
+            "Could not derive SUPABASE_S3_ENDPOINT. Set SUPABASE_URL or store "
+            "the S3 endpoint in Vault."
         )
     if not args.access_key_id or not args.secret_access_key:
-        raise ValueError("AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must be set in .env.")
+        raise ValueError(
+            "AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must be stored in "
+            "Supabase Vault (or set in the environment as a local fallback)."
+        )
 
     env = os.environ.copy()
     env["DVC_NO_ANALYTICS"] = "1"

@@ -1,7 +1,7 @@
 import argparse
 import hashlib
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 
 from weather_mlops.config.settings import PROJECT_ROOT, settings
@@ -15,9 +15,16 @@ class DatasetMetadata:
     md5: str
     sha256: str
     created_at: str | None = None
+    version_kind: str = "raw"
+    storage_uri: str | None = None
+    git_commit: str | None = None
+    preprocessing_version: str | None = None
+    parent_sha256: str | None = None
+    source: str = "weatherAUS"
+    created_by: str = "local"
 
 
-def _hash_file(path: Path, algorithm: str) -> str:
+def hash_file(path: Path, algorithm: str) -> str:
     digest = hashlib.new(algorithm)
 
     with path.open("rb") as file:
@@ -25,6 +32,10 @@ def _hash_file(path: Path, algorithm: str) -> str:
             digest.update(chunk)
 
     return digest.hexdigest()
+
+
+def _hash_file(path: Path, algorithm: str) -> str:
+    return hash_file(path, algorithm)
 
 
 def display_path(path: Path) -> str:
@@ -65,6 +76,13 @@ def write_dataset_metadata(
         encoding="utf-8",
     )
     return output_path
+
+
+def read_dataset_metadata(path: Path | None = None) -> DatasetMetadata:
+    metadata_path = path or settings.dataset_metadata_path
+    payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+    known = {item.name for item in fields(DatasetMetadata)}
+    return DatasetMetadata(**{key: value for key, value in payload.items() if key in known})
 
 
 def parse_args() -> argparse.Namespace:

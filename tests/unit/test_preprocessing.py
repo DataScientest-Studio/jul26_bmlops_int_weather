@@ -43,3 +43,31 @@ def test_temporal_train_validation_test_split_writes_feature_and_label_sets() ->
     assert y_train.name == "RainTomorrow"
     assert y_validation.name == "RainTomorrow"
     assert y_test.name == "RainTomorrow"
+
+
+def test_temporal_split_keeps_whole_calendar_days_together() -> None:
+    rows = []
+    for day in pd.date_range("2020-01-01", periods=10):
+        for location in ("Sydney", "Melbourne"):
+            rows.append(
+                {
+                    "Date": day,
+                    "Location": location,
+                    "MinTemp": 12.0,
+                    "RainTomorrow": "Yes",
+                }
+            )
+    dataframe = pd.DataFrame(rows)
+
+    X_train, X_validation, X_test, _y_train, _y_validation, _y_test = (
+        temporal_train_validation_test_split(
+            dataframe,
+            train_fraction=0.6,
+            validation_fraction=0.2,
+        )
+    )
+
+    assert len(X_train) == 12
+    assert len(X_validation) == 4
+    assert len(X_test) == 4
+    assert set(X_train["Location"]) == {"Sydney", "Melbourne"}
