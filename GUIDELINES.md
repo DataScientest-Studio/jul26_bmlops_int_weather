@@ -43,14 +43,10 @@ the most recent period, so we are always predicting forward in time).
 
 ### Our target metrics
 
-- **Primary metric: ROC-AUC.** The baseline is **0.866** on the test set. That number is the
-  published bar we aim to keep, not the live promotion gate.
+- **Primary metric: ROC-AUC.** The baseline is **0.866** on the test set. A retrained model has
+  to beat this number to replace the one in production.
 - **Guardrail: recall.** Currently **0.771**. Missing a rainy day costs more than a false alarm,
   so we do not accept a model that raises accuracy by dropping recall below **0.75**.
-- **Promotion (`make compare`)** uses **validation ROC-AUC**. The first candidate is promoted
-  only if `validation_recall` ≥ 0.75. Later candidates replace `champion` only when they beat
-  the current champion's validation ROC-AUC **and** keep recall ≥ 0.75. Held-out test metrics
-  are written by `make evaluate` and are what we compare to 0.866.
 - **We deliberately do not use accuracy as the main metric.** Since it only rains 1 day in 4,
   a model that always answers "No" would already score 77.6% accuracy — almost the same as our
   79.0%. Accuracy would make a useless model look good.
@@ -77,7 +73,7 @@ the most recent period, so we are always predicting forward in time).
 
 - ✅ Define project objectives and key metrics. // Jonathan
   - See chapter [**Project Objectives and Key Metrics**](#project-objectives-and-key-metrics)
-- ✅ Set up a reproducible development environment. // Ziad
+- ✅ Set up a reproducible development environment. // Ziad — DONE 2026-08-31
 - Collect and preprocess data:
   - ✅ Create a database (SQL or NoSQL). // Supabase - Gabriel — DONE 2026-08-31
     - Supabase project: `fgxgenjxslytnqygpefk` (eu-west-1), Postgres 17
@@ -85,9 +81,9 @@ the most recent period, so we are always predicting forward in time).
     - Schema: WeatherAUS-compatible `public.weather_observations`, `public.dataset_versions`, future `public.predictions`, `public.model_versions`, `public.drift_reports`, and the `weather-mlops-dvc` Storage bucket (see `supabase/schema.sql`)
     - Access: invite users via Supabase Auth (`Authentication → Users`); `service_role` key for server-side only
     - Migrations tracked in `supabase/migrations/`; apply via `supabase db push` after `supabase link`
-  - ✅ Store the data with a one-time-run Python script. // Ziad
+  - ✅ Store the data with a one-time-run Python script. // Update the scripts to store in the DB - Ziad — DONE 2026-08-31
 - Build and evaluate a baseline ML model:
-  - ✅ Create 2 Python scripts: `training.py` and `predict.py`. // XGBoost - Ziad
+  - ✅ Create 2 Python scripts: `training.py` and `predict.py`. // XGBoost - Ziad — DONE 2026-08-31
 - ✅ Implement a basic inference API:
   - Create endpoints: `GET /health`, `POST /predict`, `POST /predict/live_data`, `POST /train`. // Gabriel + Thomas — DONE 2026-09-05
     - Merged to `master`. Includes input validation (value bounds, location matching
@@ -98,27 +94,30 @@ the most recent period, so we are always predicting forward in time).
 ### Phase 2: Microservices, Tracking & Versioning — Deadline: Sep 20
 
 - Set up experiment tracking with **MLflow**: // Jonathan
-  - Tracking server, registry, and `champion` promotion are in Compose (`make mlflow` / `make compare`). Init container still Jonathan's call.
-- ✅ Split the application into Docker-based microservices with simple orchestration using `docker-compose`. // Gabriel — DONE 2026-09-09; jobs `ingestion` + `preprocess`, long-running `api`.
+  - Add MLflow logging to the training script.
+  - Implement data and model versioning using the MLflow Model Registry.
+  - Compare performance after each run and tag the best model in MLflow.
+  - At the end of the training script (or later via Airflow), load the previous version and compare it with the newly trained model.
+- ✅ Split the application into Docker-based microservices with simple orchestration using `docker-compose`. // Gabriel — DONE 2026-09-09; jobs `ingestion` + `preprocess`, long-running `api`. This PR: profiles `gateway` (Nginx), `streamlit`, `test`.
   - ✅ Training removed from container startup and from the Makefile — the model is trained only via `POST /train`. // Gabriel — DONE 2026-09-10, agreed in the Sep 10 internal meeting
   - **(OPTIONAL)** One container per ML phase (`preprocess`, `train`, `evaluate`) instead of a single `trainer`. // Suggestion from Vincent — `preprocess` is now its own container; `train` runs in the API
-- Develop automatic model and component updates: // Gabriel + Ziad
-  - `make train` → `POST /train` is ready. Still needs Airflow (Thomas) to schedule it.
-- ✅ Use **DVC** (without Git) to version datasets. // Ziad
-  - Processed `manifest.json` + sha256 catalog; `make dvc-pull` / `dvc-push`.
+- Develop automatic model and component updates: // Gabriel + Ziad — OPEN (no scheduler yet). ✅ POST /train done; still needs Airflow.
+  - Scheduled training: cron script, Jenkins, or Airflow (recommended but more complex). // Thomas - Airflow. Trigger already exists: `make train` → `POST /train`.
+- ✅ Use **DVC** (without Git) to version datasets. // Ziad — DONE 2026-08-31; MLflow hash logging deferred to the later MLflow stage. ✅ hash logging now in MLflow.
+  - This PR: processed `manifest.json` + sha256 catalog, independent model/metrics pointers, `make dvc-pull` / `dvc-push`. Blobs pushed 2026-09-15.
 - **(OPTIONAL)** Implement unit tests. // Run inside the CI/CD or docker container // used for API tests (including authorization and authentification). // Thomas + Gabriel
-  - ✅ `make test` in `weather-test` (ruff + pytest + live Nginx TLS/429). // Ziad
+  - ✅ `make test` in `weather-test` (ruff + pytest). Auth, Vault, catalog, Compose. Nginx TLS/429 tests read `nginx.conf` only — not a live handshake. // Ziad — 2026-09-15. ✅ live TLS/429 now in.
 - **(OPTIONAL)** CI/CD pipeline with GitHub Actions: (Recommendation: only master branch)
-  - ✅ `ci.yaml` (always): Linter + Unit tests + Build Docker images. // Gabriel — DONE 2026-09-10
+  - ✅ `ci.yaml` (always): Linter + Unit tests + Build Docker images. // Gabriel — DONE 2026-09-10. This PR also runs the test image.
   - ✅ `release.yaml` (only on master): builds and pushes the three images to the **GitHub Container Registry** (`ghcr.io`) instead of Docker Hub — approved by Nicolas on Slack 2026-09-10. // Gabriel — DONE 2026-09-10
-- **(OPTIONAL)** Optimize and secure the API (basic auth or OAuth2). // Gabriel + Ziad
-  - ✅ Basic auth on `/predict`, `/predict/live_data`, `/train`. `/health` stays open. Credentials in Vault. // Gabriel + Ziad
-  - ✅ Nginx gateway (TLS, HTTP→HTTPS, rate limits). // Ziad
+- **(OPTIONAL)** Optimize and secure the API (basic auth or OAuth2). // Gabriel + Ziad = [NGINX] - Sprint 1 API security module - review the slides from master class - check optional course
+  - ✅ Basic auth on `/predict`, `/predict/live_data`, `/train`. `/health` stays open for the docker healthcheck. Credentials live in Vault (`API_AUTH_USER` / `API_AUTH_PASSWORD`); local `.env` is only `SUPABASE_URL` + `SUPABASE_KEY`. // Gabriel + Ziad
+  - ✅ Nginx gateway (TLS, HTTP→HTTPS, per-IP rate limits on predict and `/train`). Opt-in Compose profile `gateway`. // Ziad — 2026-09-15
 - **(OPTIONAL)** Implement scalability with Kubernetes. // Thomas — OPEN, later
 
 ### Phase 3: Monitoring & Maintenance — Deadline: Oct 2
 
-- Implement drift detection with **Evidently** in the Airflow pipeline: // Ziad — still needs Airflow
+- Implement drift detection with **Evidently** in the Airflow pipeline: // Ziad — OPEN (needs Airflow + MLflow first). MLflow is in; still needs Airflow.
   - **Training**:
     - Reference dataset: historical dataset.
     - Current dataset: recent dataset.
@@ -132,8 +131,8 @@ the most recent period, so we are always predicting forward in time).
 - API performance monitoring with **Prometheus / Grafana**: // Thomas
   - Define alerts.
   - Training trigger via built-in Grafana webhook.
-- ✅ Create a simple **Streamlit** application to interact with the API and make predictions. // Ziad
-- Finish the repo's technical documentation. // Gabriel — wiki still open 
+- ✅ Create a simple **Streamlit** application to interact with the API and make predictions. // Ziad — `make streamlit`, three screens, no `SUPABASE_KEY`. DONE 2026-09-15
+- Finish the repo's technical documentation. // Gabriel (maybe use WIKI - README (first overview - talk about the project setup / goal + setup + technologies) - This PR rewrote README for Compose-first commands; wiki still open. 
 
 ### Final Presentation (Defense) — Oct 13
 
@@ -181,11 +180,10 @@ its own `Dockerfile` under `docker/`:
 | ------------ | --------------------------------------------------- | --------------------- |
 | `ingestion`  | Fetches Open-Meteo data and merges it with the seed | batch job             |
 | `preprocess` | Builds the train/validation/test splits             | batch job             |
-| `api`        | Serves the endpoints, including training            | long running, internal |
-| `nginx`      | TLS + rate limits (`make up` / `make api`)          | profile `gateway`     |
+| `api`        | Serves the endpoints, including training            | long running, `:8000` |
+| `nginx`      | TLS + rate limits (`make gateway`)                  | profile `gateway`     |
 | `streamlit`  | Live demo (`make streamlit`)                        | profile `streamlit`   |
 | `test`       | ruff + pytest (`make test`)                         | profile `test`        |
-| `mlflow`     | Tracking UI + artifact proxy (`make mlflow`)        | profile `mlflow`      |
 
 `ingestion` and `preprocess` share the `./data` volume; the API also mounts
 `./models` and `./reports`, because `POST /train` is what writes the new model.
@@ -196,19 +194,18 @@ successfully.
 
 ```bash
 make build          # build images
-make up             # MLflow + ingestion → preprocess → API → Nginx
+make up             # ingestion → preprocess → API, detached
 make logs           # follow API logs
 make down           # stop and remove the containers
 make api            # API only, when the model already exists
-make test           # ruff + pytest, including live Nginx through the gateway
+make test           # ruff + pytest in the test container
 make streamlit      # demo on 127.0.0.1:8501
-make gateway        # Nginx TLS + rate limits (without re-ingesting)
-make pipeline       # train → validate → compare → evaluate
+make gateway        # Nginx TLS + rate limits
+make pipeline       # train → validate → evaluate
 ```
 
-The API is then available at `https://127.0.0.1/docs` (self-signed; `curl -k`).
-Local `.env` needs `SUPABASE_URL` and `SUPABASE_KEY`; API basic auth is hydrated
-from Vault. `make train` and `make predict` POST through Nginx.
+The API is then available at `http://127.0.0.1:8000/docs`. Local `.env` needs
+`SUPABASE_URL` and `SUPABASE_KEY`; API basic auth is hydrated from Vault.
 
 **Training is never automatic.** No container trains on startup — the model is
 trained only through the API, which is also how Airflow will trigger it:
