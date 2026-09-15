@@ -18,7 +18,12 @@ from weather_mlops.data.open_meteo import (
     normalize_open_meteo_payloads,
     read_locations,
 )
-from weather_mlops.models.predict import load_model, predict
+from weather_mlops.models.predict import (
+    clear_model_cache,
+    describe_serving_model,
+    load_model,
+    predict,
+)
 from weather_mlops.models.training import train_model
 from weather_mlops.security.vault import AUTH_SETTINGS, hydrate_runtime_secrets
 
@@ -176,9 +181,19 @@ class LivePredictionInput(LocationBase):
     pass
 
 
+class ServingModel(BaseModel):
+    name: str
+    alias: str | None = None
+    version: str | None = None
+    source: str
+    dataset_sha256: str | None = None
+    git_commit: str | None = None
+
+
 class PredictionOutput(BaseModel):
     rain_tomorrow: bool
     probability: float
+    model: ServingModel
 
 
 class TrainOutput(BaseModel):
@@ -249,17 +264,24 @@ def health_check():
     A missing model means /predict will fail until /train has been called
 
     /health is intentionally open so docker compose can call it without creds.
+    It never waits on MLflow; registry lookups happen on /predict.
     """
-    if settings.model_path.exists():
+    auth_configured = bool(os.environ.get("API_AUTH_USER") and os.environ.get("API_AUTH_PASSWORD"))
+    serving = describe_serving_model(probe_registry=False)
+    if serving and serving.get("version") and serving.get("alias"):
+        model_status = f"{serving['name']}@{serving['alias']} v{serving['version']}"
+    elif serving:
+        model_status = f"Local file {serving['source']}"
+    elif settings.model_path.exists() or settings.best_model_path.exists():
         model_status = "A pretrained model is already loaded"
     else:
         model_status = "There is no pretrained model loaded"
 
-    auth_configured = bool(os.environ.get("API_AUTH_USER") and os.environ.get("API_AUTH_PASSWORD"))
     return {
         "status": "This API is running",
         "model_status": model_status,
         "auth_configured": auth_configured,
+        "model": serving,
     }
 
 
@@ -296,7 +318,7 @@ def train_endpoint(
     """
     try:
         pipeline, metrics = train_model(**features.model_dump())
-        load_model.cache_clear()
+        clear_model_cache()
         get_locations.cache_clear()
         return metrics
     except FileNotFoundError as e:

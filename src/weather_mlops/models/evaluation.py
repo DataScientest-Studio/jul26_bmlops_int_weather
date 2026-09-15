@@ -1,4 +1,5 @@
 import argparse
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,9 @@ from sklearn.metrics import (
     recall_score,
     roc_auc_score,
 )
+
+from weather_mlops.data.manifest import verify_processed_manifest
+from weather_mlops.data.versioning import hash_file
 
 
 def evaluate_classifier(
@@ -30,6 +34,27 @@ def evaluate_classifier(
     }
 
 
+def _dataset_sha256(x_data_path: Path, y_data_path: Path) -> str:
+    output_dir = x_data_path.parent
+    manifest_path = output_dir / "manifest.json"
+    if manifest_path.exists():
+        stored = verify_processed_manifest(output_dir)
+        return str(stored["sha256"])
+    digest = hashlib.sha256()
+    digest.update(hash_file(x_data_path, "sha256").encode())
+    digest.update(hash_file(y_data_path, "sha256").encode())
+    return digest.hexdigest()
+
+
+def _evaluation_run_id() -> str | None:
+    from weather_mlops.models.tracking import load_mlflow_run_metadata
+
+    try:
+        return load_mlflow_run_metadata().get("run_id")
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return None
+
+
 def evaluate_model(
     x_data_path: Path,
     y_data_path: Path,
@@ -39,6 +64,7 @@ def evaluate_model(
 ) -> dict[str, float]:
     from weather_mlops.data.preprocess import TARGET_COLUMN
 
+    dataset_sha256 = _dataset_sha256(x_data_path, y_data_path)
     X_data = pd.read_csv(x_data_path)
     y_data = pd.read_csv(y_data_path)[TARGET_COLUMN]
 
@@ -54,6 +80,9 @@ def evaluate_model(
             {
                 f"{split_name}_rows": len(X_data),
                 **{f"{split_name}_{name}": value for name, value in metrics.items()},
+                "model_sha256": hash_file(model_path, "sha256"),
+                "dataset_sha256": dataset_sha256,
+                "run_id": _evaluation_run_id(),
             },
             indent=2,
         )

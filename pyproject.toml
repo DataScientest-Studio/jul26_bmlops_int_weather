@@ -21,6 +21,7 @@ dependencies = [
     "uvicorn>=0.52.4",
     "xgboost>=3.0.0",
     "streamlit>=1.51.0",
+    "mlflow==3.16.0",
 ]
 
 [project.scripts]
@@ -65,6 +66,14 @@ select = [
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-ra"
+filterwarnings = [
+    "ignore::starlette.exceptions.StarletteDeprecationWarning",
+    "ignore:The anyio.abc.BlockingPortal alias is deprecated:DeprecationWarning",
+    "ignore:Unverified HTTPS request is being made:urllib3.exceptions.InsecureRequestWarning",
+]
+markers = [
+    "gateway: live TLS/429 checks against a running nginx (make test-gateway)",
+]
 
 [tool.coverage.run]
 source = ["weather_mlops"]

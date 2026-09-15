@@ -27,7 +27,7 @@ SLIDES: tuple[Slide, ...] = (
         title="Two buckets, one catalog",
         kicker="Data",
         notes=(
-            "weather-mlops-dvc holds datasets. weather-mlops-mlflow holds models.",
+            "weather-mlops-dvc holds datasets. weather-mlops-mlflow holds MLflow artifacts.",
             "dataset_versions names each snapshot by sha256.",
             "Vault holds S3 keys and API basic auth. Streamlit never sees the service-role key.",
         ),
@@ -37,7 +37,7 @@ SLIDES: tuple[Slide, ...] = (
         title="Will it rain tomorrow?",
         kicker="Demo",
         notes=(
-            "This page calls /health and /predict/live_data on the API.",
+            "This page calls Nginx, which proxies /health and /predict/live_data.",
             "It uses basic auth hydrated from Vault. It never loads SUPABASE_KEY.",
         ),
     ),

@@ -29,10 +29,9 @@ def test_every_built_service_dockerfile_exists():
 def test_core_pipeline_services_are_there():
     services = load_services()
 
-    assert {"api", "ingestion", "preprocess", "streamlit", "test"} <= set(services)
+    assert {"api", "ingestion", "preprocess", "streamlit", "test", "mlflow"} <= set(services)
     assert "trainer" not in services, "the trainer service was replaced by preprocess"
     assert "nginx" in services
-    assert "mlflow" not in services
     assert "minio" not in services
 
 
@@ -43,13 +42,14 @@ def test_nginx_is_an_opt_in_profile():
 def test_demo_and_test_are_opt_in_profiles():
     assert load_services()["streamlit"]["profiles"] == ["streamlit"]
     assert load_services()["test"]["profiles"] == ["test"]
+    assert load_services()["mlflow"]["profiles"] == ["mlflow"]
 
 
 def test_demo_does_not_receive_the_service_role_key():
     env = load_services()["streamlit"]["environment"]
 
     assert "SUPABASE_KEY" not in env
-    assert env["DEMO_API_URL"] == "http://api:8000"
+    assert env["DEMO_API_URL"] == "https://nginx"
     assert env["API_AUTH_USER"] == "${API_AUTH_USER:-}"
     assert env["API_AUTH_PASSWORD"] == "${API_AUTH_PASSWORD:-}"
 
@@ -73,17 +73,49 @@ def test_api_cannot_write_to_the_dataset():
     volumes = load_services()["api"]["volumes"]
 
     assert "./data:/app/data:ro" in volumes
+    assert "./sample_prediction.json:/app/sample_prediction.json:ro" not in volumes
 
 
-def test_api_port_is_bound_to_localhost():
-    assert "127.0.0.1:8000:8000" in load_services()["api"]["ports"]
+def test_api_is_not_published_on_the_host():
+    """Public HTTP(S) is Nginx. The API only listens on the Compose network."""
+    assert "ports" not in load_services()["api"]
+
+
+def test_mlflow_port_is_bound_to_localhost():
+    assert "127.0.0.1:8080:8080" in load_services()["mlflow"]["ports"]
+
+
+def test_mlflow_writes_artifacts_to_supabase_bucket():
+    service = load_services()["mlflow"]
+    command = service["command"]
+    env = service["environment"]
+
+    assert "s3://weather-mlops-mlflow" in command
+    assert "--serve-artifacts" in command
+    assert env["AWS_ACCESS_KEY_ID"] == "${AWS_ACCESS_KEY_ID:-}"
+    assert env["AWS_SECRET_ACCESS_KEY"] == "${AWS_SECRET_ACCESS_KEY:-}"
+    assert env["MLFLOW_S3_ENDPOINT_URL"] == "${MLFLOW_S3_ENDPOINT_URL:-}"
+    assert "SUPABASE_KEY" not in env
+
+
+def test_mlflow_image_can_talk_to_s3():
+    dockerfile = (PROJECT_ROOT / "docker" / "mlflow" / "Dockerfile").read_text()
+
+    assert "boto3" in dockerfile
 
 
 def test_api_only_receives_supabase_bootstrap_env():
     env = load_services()["api"]["environment"]
 
-    assert {"SUPABASE_URL", "SUPABASE_KEY", "GIT_COMMIT"} == set(env)
-    assert "API_AUTH_PASSWORD" not in env
+    assert {
+        "SUPABASE_URL",
+        "SUPABASE_KEY",
+        "GIT_COMMIT",
+        "MLFLOW_TRACKING_URI",
+        "API_AUTH_USER",
+        "API_AUTH_PASSWORD",
+    } == set(env)
+    assert env["API_AUTH_PASSWORD"] == "${API_AUTH_PASSWORD:-}"
 
 
 def test_api_image_records_git_commit():
@@ -119,3 +151,4 @@ def test_test_service_runs_ruff_and_pytest():
     command = load_services()["test"]["command"]
 
     assert command[-1] == "ruff check . && ruff format --check . && pytest -v"
+    assert load_services()["test"]["networks"] == ["weather_network"]

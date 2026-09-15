@@ -179,3 +179,76 @@ def test_store_dataset_metadata_does_not_null_out_storage_uri() -> None:
     assert client.query.row["created_at"] == "2026-01-01T00:00:00+00:00"
     assert client.query.row["git_commit"] == "abc123"
     assert client.query.row["created_by"] == "load_to_supabase"
+
+
+def test_store_dataset_metadata_rejects_conflicting_lineage() -> None:
+    existing = [
+        {
+            "storage_uri": "s3://weather-mlops-dvc/processed/sha256/manifest.json",
+            "created_at": "2026-01-01T00:00:00+00:00",
+            "git_commit": "oldcommit",
+            "preprocessing_version": "2026.09.01",
+            "parent_sha256": "parent-a",
+            "created_by": "preprocess",
+            "source": "open-meteo",
+            "version_kind": "processed",
+        }
+    ]
+    client = FakeClient(existing=existing)
+    metadata = DatasetMetadata(
+        dataset_name="weatherAUS",
+        path="data/processed",
+        size_bytes=8,
+        md5="md5",
+        sha256="sha256",
+        version_kind="processed",
+        storage_uri="s3://weather-mlops-dvc/processed/sha256/manifest.json",
+        git_commit="newcommit",
+        parent_sha256="parent-b",
+        created_by="preprocess",
+    )
+
+    try:
+        store_dataset_metadata(metadata, client=client)
+        raise AssertionError("conflicting lineage must fail")
+    except ValueError as exc:
+        assert "Catalog lineage conflict" in str(exc)
+        assert "parent_sha256" in str(exc) or "git_commit" in str(exc)
+
+
+def test_store_dataset_metadata_keeps_existing_object_bytes() -> None:
+    existing = [
+        {
+            "storage_uri": "s3://weather-mlops-dvc/processed/sha256/manifest.json",
+            "created_at": "2026-01-01T00:00:00+00:00",
+            "git_commit": "abc123",
+            "preprocessing_version": "2026.09.01",
+            "parent_sha256": "parent-a",
+            "created_by": "preprocess",
+            "source": "open-meteo",
+            "version_kind": "processed",
+            "path": "data/processed/first-run",
+            "size_bytes": 42,
+            "md5": "original-md5",
+        }
+    ]
+    client = FakeClient(existing=existing)
+    metadata = DatasetMetadata(
+        dataset_name="weatherAUS",
+        path="data/processed/second-run",
+        size_bytes=99,
+        md5="second-md5",
+        sha256="sha256",
+        version_kind="processed",
+        storage_uri="s3://weather-mlops-dvc/processed/sha256/manifest.json",
+        git_commit="abc123",
+        parent_sha256="parent-a",
+        created_by="preprocess",
+    )
+
+    store_dataset_metadata(metadata, client=client)
+
+    assert client.query.row["path"] == "data/processed/first-run"
+    assert client.query.row["size_bytes"] == 42
+    assert client.query.row["md5"] == "original-md5"
+    assert client.query.row["git_commit"] == "abc123"

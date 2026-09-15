@@ -5,7 +5,7 @@ LOCAL_ENV = UV_CACHE_DIR=.uv-cache
 DVC_ENV = $(LOCAL_ENV) DVC_NO_ANALYTICS=1 DVC_SITE_CACHE_DIR=.dvc/tmp/cache-home XDG_CACHE_HOME=.dvc/tmp/cache-home
 COMPOSE = docker compose
 
-API_URL ?= http://api:8000
+API_URL ?= https://nginx
 TRAIN_PARAMS ?= {}
 ARGS ?=
 SERVICE ?= api
@@ -15,8 +15,8 @@ GIT_COMMIT ?= $(GIT_SHA)$(GIT_DIRTY)
 export GIT_COMMIT
 
 .PHONY: dvc-check-env dvc-config dvc-pull dvc-push dvc-repro dvc-add-model dvc-commit \
-	build up api gateway streamlit down logs test pipeline \
-	train validate evaluate predict fetch-open-meteo merge-raw preprocess \
+	build up serve api gateway streamlit mlflow down logs test test-gateway pipeline \
+	train validate evaluate compare predict fetch-open-meteo merge-raw preprocess \
 	load-db register-dataset
 
 # --- DVC stays on the host (Git pointers + local cache). Everything else is Compose. ---
@@ -47,36 +47,51 @@ dvc-commit:
 # --- Compose: long-running services detach; jobs run and exit. ---
 
 build:
-	$(COMPOSE) --profile gateway --profile streamlit --profile test build
+	$(COMPOSE) --profile gateway --profile streamlit --profile test --profile mlflow build
 
 up:
-	$(COMPOSE) up -d --build
-
-api:
-	$(COMPOSE) up -d --build --no-deps api
-
-gateway:
+	$(MAKE) mlflow
 	$(COMPOSE) --profile gateway up -d --build
 
-streamlit:
-	$(COMPOSE) up -d --build --no-deps api
+serve:
+	$(MAKE) mlflow
+	$(COMPOSE) up -d --build --no-deps --wait api
+	$(COMPOSE) --profile gateway up -d --build --force-recreate --no-deps nginx
+
+api: serve
+gateway: serve
+
+streamlit: serve
 	$(LOCAL_ENV) uv run python scripts/with_vault_env.py $(COMPOSE) --profile streamlit up -d --build --no-deps streamlit
 
+mlflow:
+	$(LOCAL_ENV) uv run python scripts/with_vault_env.py --s3 $(COMPOSE) --profile mlflow up -d --build --wait mlflow
+
 down:
-	$(COMPOSE) --profile gateway --profile streamlit --profile test down --remove-orphans
+	$(COMPOSE) --profile gateway --profile streamlit --profile test --profile mlflow down --remove-orphans
 
 logs:
 	$(COMPOSE) logs -f $(SERVICE)
 
 test:
-	$(COMPOSE) --profile test run --rm --build test
+	$(COMPOSE) up -d --build --no-deps api
+	$(COMPOSE) --profile gateway up -d --build --force-recreate --no-deps nginx
+	$(COMPOSE) --profile test run --rm --build -e GATEWAY_URL=https://nginx test
 
-pipeline: api
-	$(MAKE) train
+test-gateway:
+	$(COMPOSE) up -d --build --no-deps api
+	$(COMPOSE) --profile gateway up -d --build --force-recreate --no-deps nginx
+	$(COMPOSE) --profile test run --rm --build -e GATEWAY_URL=https://nginx --entrypoint pytest test -v tests/integration/test_nginx_live.py
+
+pipeline: train
 	$(MAKE) validate
+	$(MAKE) compare
 	$(MAKE) evaluate
 
-train:
+compare:
+	$(COMPOSE) run --rm --no-deps --entrypoint python api -m weather_mlops.models.comparison
+
+train: serve
 	$(COMPOSE) run --rm --no-deps -e API_URL="$(API_URL)" -e TRAIN_PARAMS='$(TRAIN_PARAMS)' --entrypoint python api scripts/train_via_api.py
 
 validate:
@@ -85,8 +100,11 @@ validate:
 evaluate:
 	$(COMPOSE) run --rm --no-deps --entrypoint python api -m weather_mlops.models.evaluation
 
-predict:
-	$(COMPOSE) run --rm --no-deps --entrypoint python api -m weather_mlops.models.predict --input-json sample_prediction.json
+predict: serve
+	$(COMPOSE) run --rm --no-deps \
+		-e API_URL="$(API_URL)" \
+		--volume ./sample_prediction.json:/app/sample_prediction.json:ro \
+		--entrypoint python api scripts/predict_via_api.py --input-json sample_prediction.json
 
 fetch-open-meteo:
 	@test -n "$(OPEN_METEO_DATE)" || (echo "Usage: make fetch-open-meteo OPEN_METEO_DATE=2026-09-01"; exit 1)

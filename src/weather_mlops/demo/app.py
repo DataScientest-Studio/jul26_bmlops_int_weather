@@ -8,11 +8,12 @@ from pathlib import Path
 import requests
 import streamlit as st
 
+from weather_mlops.api.http import tls_verify
 from weather_mlops.config.settings import settings
 from weather_mlops.demo.slides import SLIDES
 
 STYLES = Path(__file__).with_name("styles.css").read_text(encoding="utf-8")
-DEFAULT_API_URL = os.environ.get("DEMO_API_URL", "http://127.0.0.1:8000")
+DEFAULT_API_URL = os.environ.get("DEMO_API_URL", "https://nginx")
 API_AUTH = (
     os.environ.get("API_AUTH_USER") or "",
     os.environ.get("API_AUTH_PASSWORD") or "",
@@ -82,12 +83,16 @@ def _render_stores() -> None:
 def _render_live(api_url: str) -> None:
     st.caption(f"Talking to {api_url}")
     try:
-        health = requests.get(f"{api_url}/health", timeout=3)
+        health = requests.get(
+            f"{api_url}/health",
+            timeout=3,
+            verify=tls_verify(api_url),
+        )
         health.raise_for_status()
         body = health.json()
         st.success(body.get("status", "API up"))
     except requests.RequestException as exc:
-        st.error("API is down. From the repo root run `make api`.")
+        st.error("Gateway is down. From the repo root run `make api` or `make up`.")
         st.caption(str(exc))
         return
 
@@ -108,6 +113,7 @@ def _render_live(api_url: str) -> None:
                 json={"location": location},
                 auth=API_AUTH if all(API_AUTH) else None,
                 timeout=40,
+                verify=tls_verify(api_url),
             )
             _show_prediction(response)
         except requests.RequestException as exc:
@@ -133,6 +139,11 @@ def _show_prediction(response: requests.Response) -> None:
         f'<div class="forecast"><strong>{rain}</strong><span>{probability:.0%}</span></div>',
         unsafe_allow_html=True,
     )
+    model = payload.get("model") or {}
+    if model.get("alias") and model.get("version"):
+        st.caption(f"Served by {model['name']}@{model['alias']} v{model['version']}")
+    elif model.get("source"):
+        st.caption(f"Served by {model['source']}")
 
 
 def main() -> None:

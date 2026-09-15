@@ -101,12 +101,12 @@ the most recent period, so we are always predicting forward in time).
 - ✅ Split the application into Docker-based microservices with simple orchestration using `docker-compose`. // Gabriel — DONE 2026-09-09; jobs `ingestion` + `preprocess`, long-running `api`. This PR: profiles `gateway` (Nginx), `streamlit`, `test`.
   - ✅ Training removed from container startup and from the Makefile — the model is trained only via `POST /train`. // Gabriel — DONE 2026-09-10, agreed in the Sep 10 internal meeting
   - **(OPTIONAL)** One container per ML phase (`preprocess`, `train`, `evaluate`) instead of a single `trainer`. // Suggestion from Vincent — `preprocess` is now its own container; `train` runs in the API
-- Develop automatic model and component updates: // Gabriel + Ziad — OPEN (no scheduler yet)
+- Develop automatic model and component updates: // Gabriel + Ziad — OPEN (no scheduler yet). ✅ POST /train done; still needs Airflow.
   - Scheduled training: cron script, Jenkins, or Airflow (recommended but more complex). // Thomas - Airflow. Trigger already exists: `make train` → `POST /train`.
-- ✅ Use **DVC** (without Git) to version datasets. // Ziad — DONE 2026-08-31; MLflow hash logging deferred to the later MLflow stage
+- ✅ Use **DVC** (without Git) to version datasets. // Ziad — DONE 2026-08-31; MLflow hash logging deferred to the later MLflow stage. ✅ hash logging now in MLflow.
   - This PR: processed `manifest.json` + sha256 catalog, independent model/metrics pointers, `make dvc-pull` / `dvc-push`. Blobs pushed 2026-09-15.
 - **(OPTIONAL)** Implement unit tests. // Run inside the CI/CD or docker container // used for API tests (including authorization and authentification). // Thomas + Gabriel
-  - ✅ `make test` in `weather-test` (ruff + pytest). Auth, Vault, catalog, Compose. Nginx TLS/429 tests read `nginx.conf` only — not a live handshake. // Ziad — 2026-09-15
+  - ✅ `make test` in `weather-test` (ruff + pytest). Auth, Vault, catalog, Compose. Nginx TLS/429 tests read `nginx.conf` only — not a live handshake. // Ziad — 2026-09-15. ✅ live TLS/429 now in.
 - **(OPTIONAL)** CI/CD pipeline with GitHub Actions: (Recommendation: only master branch)
   - ✅ `ci.yaml` (always): Linter + Unit tests + Build Docker images. // Gabriel — DONE 2026-09-10. This PR also runs the test image.
   - ✅ `release.yaml` (only on master): builds and pushes the three images to the **GitHub Container Registry** (`ghcr.io`) instead of Docker Hub — approved by Nicolas on Slack 2026-09-10. // Gabriel — DONE 2026-09-10
@@ -117,7 +117,7 @@ the most recent period, so we are always predicting forward in time).
 
 ### Phase 3: Monitoring & Maintenance — Deadline: Oct 2
 
-- Implement drift detection with **Evidently** in the Airflow pipeline: // Ziad — OPEN (needs Airflow + MLflow first)
+- Implement drift detection with **Evidently** in the Airflow pipeline: // Ziad — OPEN (needs Airflow + MLflow first). MLflow is in; still needs Airflow.
   - **Training**:
     - Reference dataset: historical dataset.
     - Current dataset: recent dataset.
@@ -263,13 +263,3 @@ make train          # POST /train against the running API container
 - Sep 10 at 10:00 AM — [meeting notes](meetings/internal_meetings/20260910_InternalMeeting_1000AM_CET.md)
 
 Suggestion from Nicolas: https://github.com/minio/minio as local S3 bucket.
-
----
-
-## Status 2026-09-15 — Ziad
-
-**This PR:** Nginx + Vault auth, sha256 catalog, Compose-first Makefile, Streamlit, `make test`, DVC model pointers pushed, observation-identity SQL applied on the shared project.
-
-**Still open for Ziad:** Evidently drift (Phase 3). Live TLS/429 tests. MLflow init containers with Jonathan.
-
-**Waiting on others:** MLflow (Jonathan), Airflow (Thomas), Prometheus/Grafana (Thomas), wiki (Gabriel).

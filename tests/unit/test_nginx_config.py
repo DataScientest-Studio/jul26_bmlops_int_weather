@@ -31,4 +31,6 @@ def test_nginx_allows_swagger_assets_on_docs() -> None:
 
 def test_nginx_does_not_expose_mlflow_or_airflow() -> None:
     assert "5000" not in NGINX_CONF
+    assert "8080" not in NGINX_CONF
     assert "airflow" not in NGINX_CONF.lower()
+    assert "mlflow" not in NGINX_CONF.lower()

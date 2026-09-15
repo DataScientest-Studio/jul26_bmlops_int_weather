@@ -13,7 +13,9 @@ from weather_mlops.config.settings import settings
 from weather_mlops.data.catalog import current_git_commit
 from weather_mlops.data.manifest import verify_processed_manifest
 from weather_mlops.data.preprocess import TARGET_COLUMN, build_preprocessor
+from weather_mlops.data.versioning import hash_file
 from weather_mlops.models.evaluation import evaluate_classifier
+from weather_mlops.models.tracking import clear_mlflow_run_metadata, log_training_run
 
 _TRAIN_LOCK = threading.Lock()
 
@@ -55,6 +57,7 @@ def train_model(
     """Train and evaluate the XGBoost rainfall classifier."""
 
     with _TRAIN_LOCK:
+        clear_mlflow_run_metadata()
         return _train_model_unlocked(
             x_train_path=x_train_path,
             y_train_path=y_train_path,
@@ -167,6 +170,24 @@ def _train_model_unlocked(
 
     print(f"\nModel saved to: {model_output_path}")
     print(f"Training metrics saved to: {metrics_output_path}")
+
+    log_training_run(
+        pipeline=pipeline,
+        metrics=metrics,
+        manifest=manifest,
+        model_sha256=hash_file(model_output_path, "sha256"),
+        n_estimators=n_estimators,
+        max_depth=max_depth,
+        learning_rate=learning_rate,
+        subsample=subsample,
+        colsample_bytree=colsample_bytree,
+        train_rows=len(X_train),
+        scale_pos_weight=scale_pos_weight,
+        negative_count=negative_count,
+        positive_count=positive_count,
+        model_path=model_output_path,
+        metrics_path=metrics_output_path,
+    )
 
     return pipeline, metrics
 

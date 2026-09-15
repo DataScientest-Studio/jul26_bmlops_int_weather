@@ -1,6 +1,6 @@
 # ingestion and preprocess are jobs: they run once and stop. the api stays up.
 # there is no training job here: training happens only when someone calls POST /train.
-# Profiles: gateway (Nginx TLS + rate limits), streamlit, test (pytest).
+# Profiles: gateway (Nginx TLS + rate limits), streamlit, test (pytest), mlflow.
 
 services:
   ingestion:
@@ -41,13 +41,15 @@ services:
     image: weather-api:latest
     networks:
       - weather_network
-    ports:
-      - "127.0.0.1:8000:8000"
+    # Not published. Public traffic enters through Nginx on 80/443.
     # URL + key only. Basic auth comes from Vault at process start.
     environment:
       SUPABASE_URL: ${SUPABASE_URL:-}
       SUPABASE_KEY: ${SUPABASE_KEY:-}
       GIT_COMMIT: ${GIT_COMMIT:-}
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-http://mlflow:8080}
+      API_AUTH_USER: ${API_AUTH_USER:-}
+      API_AUTH_PASSWORD: ${API_AUTH_PASSWORD:-}
     volumes:
       # read only, the api must not change the dataset
       - ./data:/app/data:ro
@@ -59,10 +61,11 @@ services:
         condition: service_completed_successfully
     healthcheck:
       # calls our own /health endpoint
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 15s
 
   nginx:
     profiles: ["gateway"]
@@ -90,7 +93,7 @@ services:
     ports:
       - "127.0.0.1:8501:8501"
     environment:
-      DEMO_API_URL: http://api:8000
+      DEMO_API_URL: https://nginx
       # Not in .env. `make streamlit` hydrates these from Vault first.
       # Empty defaults keep other compose commands from warning.
       API_AUTH_USER: ${API_AUTH_USER:-}
@@ -106,6 +109,8 @@ services:
       dockerfile: docker/test/Dockerfile
     image: weather-test:latest
     working_dir: /app
+    networks:
+      - weather_network
     volumes:
       - .:/app
     environment:
@@ -114,6 +119,49 @@ services:
       - sh
       - -c
       - ruff check . && ruff format --check . && pytest -v
+
+  mlflow:
+    profiles: ["mlflow"]
+    build:
+      context: .
+      dockerfile: docker/mlflow/Dockerfile
+    image: weather-mlflow:latest
+    networks:
+      - weather_network
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./mlflow-data:/mlflow
+    environment:
+      # S3 keys come from Vault via `make mlflow` / with_vault_env.py --s3.
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-eu-west-1}
+      MLFLOW_S3_ENDPOINT_URL: ${MLFLOW_S3_ENDPOINT_URL:-}
+    command:
+      - server
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --allowed-hosts
+      - "mlflow:8080,localhost:8080,127.0.0.1:8080"
+      - --backend-store-uri
+      - sqlite:////mlflow/mlflow.db
+      - --artifacts-destination
+      - s3://weather-mlops-mlflow
+      - --serve-artifacts
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 networks:
   weather_network:
