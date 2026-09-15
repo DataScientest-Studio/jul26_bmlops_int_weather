@@ -39,6 +39,12 @@ services:
       - weather_network
     ports:
       - "8000:8000"
+    # The api now requires basic auth on /predict, /predict/live_data, /train.
+    # Values come from the local .env so a real password never lands in the
+    # tracked compose file or in the published docker image.
+    environment:
+      API_AUTH_USER: ${API_AUTH_USER}
+      API_AUTH_PASSWORD: ${API_AUTH_PASSWORD}
     volumes:
       # read only, the api must not change the dataset
       - ./data:/app/data:ro
