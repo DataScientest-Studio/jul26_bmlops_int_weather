@@ -9,9 +9,9 @@ create extension if not exists "uuid-ossp";
 
 -- Phase 1: WeatherAUS raw data loaded by scripts/load_to_supabase.py.
 create table if not exists public.weather_observations (
-    source_row_number integer primary key,
-    date date,
-    location text,
+    date date not null,
+    location text not null,
+    source_row_number integer,
     min_temp double precision,
     max_temp double precision,
     rainfall double precision,
@@ -34,7 +34,8 @@ create table if not exists public.weather_observations (
     rain_today text,
     rain_tomorrow text,
     ingested_at timestamptz not null default now(),
-    source text not null default 'weatherAUS'
+    source text not null default 'weatherAUS',
+    primary key (date, location)
 );
 
 create index if not exists idx_weather_observations_date_location
@@ -43,7 +44,7 @@ create index if not exists idx_weather_observations_date_location
 create index if not exists idx_weather_observations_location
     on public.weather_observations (location);
 
--- Dataset metadata written by scripts/load_to_supabase.py.
+-- Dataset metadata written by scripts/register_dataset_version.py.
 create table if not exists public.dataset_versions (
     dataset_name text not null,
     path text not null,
@@ -51,6 +52,13 @@ create table if not exists public.dataset_versions (
     md5 text not null,
     sha256 text not null,
     created_at timestamptz not null,
+    version_kind text not null default 'raw',
+    storage_uri text,
+    git_commit text,
+    preprocessing_version text,
+    parent_sha256 text,
+    source text not null default 'weatherAUS',
+    created_by text not null default 'local',
     primary key (dataset_name, sha256)
 );
 
@@ -163,3 +171,81 @@ create policy auth_write_drift_rep
     on public.drift_reports for all
     to authenticated
     using (true) with check (true);
+
+-- Additive lineage columns for projects that already applied the Phase 1 schema.
+alter table public.dataset_versions add column if not exists version_kind text not null default 'raw';
+alter table public.dataset_versions add column if not exists storage_uri text;
+alter table public.dataset_versions add column if not exists git_commit text;
+alter table public.dataset_versions add column if not exists preprocessing_version text;
+alter table public.dataset_versions add column if not exists parent_sha256 text;
+alter table public.dataset_versions add column if not exists source text not null default 'weatherAUS';
+alter table public.dataset_versions add column if not exists created_by text not null default 'local';
+
+create index if not exists idx_dataset_versions_kind
+    on public.dataset_versions (version_kind, created_at desc);
+
+-- Immutable raw ingestion batches, separate from processed dataset snapshots.
+create table if not exists public.ingestion_batches (
+    id uuid primary key default uuid_generate_v4(),
+    batch_date date not null,
+    location_count integer,
+    storage_uri text not null,
+    sha256 text not null,
+    source text not null default 'open-meteo',
+    git_commit text,
+    created_at timestamptz not null default now(),
+    unique (batch_date, sha256)
+);
+
+create index if not exists idx_ingestion_batches_date
+    on public.ingestion_batches (batch_date desc);
+
+alter table public.ingestion_batches enable row level security;
+
+drop policy if exists auth_write_ingestion_batches on public.ingestion_batches;
+create policy auth_write_ingestion_batches
+    on public.ingestion_batches for all
+    to authenticated
+    using (true) with check (true);
+
+-- Private MLflow artifact bucket (Jonathan's tracking server). Dataset snapshots
+-- reuse the existing DVC bucket weather-mlops-dvc with raw/ and processed/ prefixes.
+insert into storage.buckets (id, name, public)
+values ('weather-mlops-mlflow', 'weather-mlops-mlflow', false)
+on conflict (id) do nothing;
+
+-- Vault holds S3 keys and API basic auth (API_AUTH_USER / API_AUTH_PASSWORD).
+-- Local .env only needs SUPABASE_URL + SUPABASE_KEY (service role).
+do $$
+begin
+    create extension if not exists supabase_vault;
+exception
+    when others then
+        raise notice 'supabase_vault extension not available: %', sqlerrm;
+end$$;
+
+create or replace function public.get_app_secret(secret_name text)
+returns text
+language plpgsql
+security definer
+set search_path = vault, pg_temp
+as $$
+declare
+    value text;
+begin
+    if coalesce(auth.role(), current_user) not in ('service_role', 'postgres', 'supabase_admin') then
+        raise exception 'not authorized to read vault secrets';
+    end if;
+
+    select decrypted_secret
+      into value
+      from vault.decrypted_secrets
+     where name = secret_name
+     limit 1;
+
+    return value;
+end;
+$$;
+
+revoke all on function public.get_app_secret(text) from public, anon, authenticated;
+grant execute on function public.get_app_secret(text) to service_role, postgres;

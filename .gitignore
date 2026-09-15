@@ -87,7 +87,9 @@ target/
 !/data/raw/*.dvc
 /data/processed/*
 /models/*.joblib
-/reports/metrics/
+!/models/*.dvc
+/reports/metrics/*
+!/reports/metrics/*.dvc
 
 # Mac OS-specific storage files
 .DS_Store
@@ -109,3 +111,8 @@ target/
 
 # Supabase local CLI state.
 supabase/.temp/
+
+# Generated local TLS material for the Nginx gateway.
+docker/nginx/certs/
+
+.streamlit/secrets.toml

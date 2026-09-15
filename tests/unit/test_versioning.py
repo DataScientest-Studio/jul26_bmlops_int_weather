@@ -1,5 +1,10 @@
 from weather_mlops.config.settings import PROJECT_ROOT
-from weather_mlops.data.versioning import build_dataset_metadata, display_path
+from weather_mlops.data.versioning import (
+    build_dataset_metadata,
+    display_path,
+    read_dataset_metadata,
+    write_dataset_metadata,
+)
 
 
 def test_build_dataset_metadata_hashes_file(tmp_path) -> None:
@@ -16,3 +21,17 @@ def test_build_dataset_metadata_hashes_file(tmp_path) -> None:
 
 def test_display_path_uses_repo_relative_paths() -> None:
     assert display_path(PROJECT_ROOT / "data/raw/weatherAUS.csv") == "data/raw/weatherAUS.csv"
+
+
+def test_write_and_read_dataset_metadata_round_trip(tmp_path) -> None:
+    dataset = tmp_path / "dataset.csv"
+    dataset.write_text("a,b\n1,2\n", encoding="utf-8")
+    output = tmp_path / "metadata.json"
+    metadata = build_dataset_metadata(dataset)
+
+    write_dataset_metadata(metadata, output)
+    loaded = read_dataset_metadata(output)
+
+    assert loaded.sha256 == metadata.sha256
+    assert loaded.version_kind == "raw"
+    assert loaded.created_by == "local"

@@ -24,6 +24,9 @@ stages:
     deps:
       - data/raw/weatherAUS_current.csv
       - src/weather_mlops/data/preprocess.py
+      - src/weather_mlops/data/manifest.py
+      - src/weather_mlops/data/catalog.py
+      - src/weather_mlops/data/versioning.py
       - src/weather_mlops/config/settings.py
     params:
       - data.train_fraction
@@ -35,22 +38,7 @@ stages:
       - data/processed/y_train.csv
       - data/processed/y_validation.csv
       - data/processed/y_test.csv
-
-  train:
-    cmd: python -m weather_mlops.models.training --x-train data/processed/X_train.csv --y-train data/processed/y_train.csv --model-output models/rain_classifier.joblib --metrics-output reports/metrics/train.json --n-estimators ${model.n_estimators} --max-depth ${model.max_depth} --learning-rate ${model.learning_rate} --subsample ${model.subsample} --colsample-bytree ${model.colsample_bytree}
-    deps:
-      - data/processed/X_train.csv
-      - data/processed/y_train.csv
-      - src/weather_mlops/data/preprocess.py
-      - src/weather_mlops/models/evaluation.py
-      - src/weather_mlops/models/training.py
-      - src/weather_mlops/config/settings.py
-    params:
-      - model
-    outs:
-      - models/rain_classifier.joblib
-    metrics:
-      - reports/metrics/train.json
+      - data/processed/manifest.json
 
   validate:
     cmd: python -m weather_mlops.models.evaluation --x-data data/processed/X_validation.csv --y-data data/processed/y_validation.csv --model-path models/rain_classifier.joblib --metrics-output reports/metrics/validation.json --split-name validation

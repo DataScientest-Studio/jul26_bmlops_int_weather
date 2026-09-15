@@ -7,16 +7,36 @@ from weather_mlops.api.main import app
 
 GOOD_USER = "weather"
 GOOD_PASS = "supersecret"
+PREDICT_METRICS = {"rain_tomorrow": False, "probability": 0.12}
+TRAIN_METRICS = {
+    "accuracy": 0.8,
+    "precision": 0.8,
+    "recall": 0.8,
+    "f1": 0.8,
+    "roc_auc": 0.8,
+}
 
 
 @pytest.fixture
 def client(monkeypatch):
     monkeypatch.setenv("API_AUTH_USER", GOOD_USER)
     monkeypatch.setenv("API_AUTH_PASSWORD", GOOD_PASS)
-    return TestClient(app)
 
+    def fake_locations():
+        return ["Sydney"]
 
-# --- /health is always open --------------------------------------------------
+    fake_locations.cache_clear = lambda: None
+    monkeypatch.setattr("weather_mlops.api.main.get_locations", fake_locations)
+    monkeypatch.setattr(
+        "weather_mlops.api.main.predict",
+        lambda _features: PREDICT_METRICS,
+    )
+    monkeypatch.setattr(
+        "weather_mlops.api.main.train_model",
+        lambda **_kwargs: (None, TRAIN_METRICS),
+    )
+    with TestClient(app) as test_client:
+        yield test_client
 
 
 def test_health_is_open_without_auth(client):
@@ -24,9 +44,7 @@ def test_health_is_open_without_auth(client):
 
     assert response.status_code == 200
     assert response.json()["status"] == "This API is running"
-
-
-# --- /predict refuses unauthenticated calls ---------------------------------
+    assert response.json()["auth_configured"] is True
 
 
 def test_predict_rejects_missing_credentials(client):
@@ -49,15 +67,12 @@ def test_predict_rejects_wrong_password(client):
 def test_predict_passes_auth_when_credentials_match(client):
     response = client.post(
         "/predict",
-        json={"location": "Sydney"},
+        json={"location": "Sydney", "rainfall": 0.0, "humidity_3pm": 30.0, "pressure_3pm": 1015.0},
         auth=(GOOD_USER, GOOD_PASS),
     )
 
-    # Anything other than 401 means auth let the request in.
-    assert response.status_code != 401
-
-
-# --- /train is also protected ----------------------------------------------
+    assert response.status_code == 200
+    assert response.json()["rain_tomorrow"] is False
 
 
 def test_train_rejects_missing_credentials(client):
@@ -69,20 +84,14 @@ def test_train_rejects_missing_credentials(client):
 def test_train_passes_auth_when_credentials_match(client):
     response = client.post("/train", json={}, auth=(GOOD_USER, GOOD_PASS))
 
-    # Anything other than 401 means auth let the request in.
-    assert response.status_code != 401
-
-
-# --- /predict/live_data is also protected ----------------------------------
+    assert response.status_code == 200
+    assert response.json()["roc_auc"] == 0.8
 
 
 def test_predict_live_data_rejects_missing_credentials(client):
     response = client.post("/predict/live_data", json={"location": "Sydney"})
 
     assert response.status_code == 401
-
-
-# --- misconfiguration is loud, not silent ----------------------------------
 
 
 def test_missing_env_returns_503(client, monkeypatch):

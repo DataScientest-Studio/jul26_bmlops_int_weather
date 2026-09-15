@@ -98,24 +98,26 @@ the most recent period, so we are always predicting forward in time).
   - Implement data and model versioning using the MLflow Model Registry.
   - Compare performance after each run and tag the best model in MLflow.
   - At the end of the training script (or later via Airflow), load the previous version and compare it with the newly trained model.
-- ✅ Split the application into Docker-based microservices with simple orchestration using `docker-compose`. // Gabriel — DONE 2026-09-09; three services: `ingestion`, `preprocess`, `api`
+- ✅ Split the application into Docker-based microservices with simple orchestration using `docker-compose`. // Gabriel — DONE 2026-09-09; jobs `ingestion` + `preprocess`, long-running `api`. This PR: profiles `gateway` (Nginx), `streamlit`, `test`.
   - ✅ Training removed from container startup and from the Makefile — the model is trained only via `POST /train`. // Gabriel — DONE 2026-09-10, agreed in the Sep 10 internal meeting
   - **(OPTIONAL)** One container per ML phase (`preprocess`, `train`, `evaluate`) instead of a single `trainer`. // Suggestion from Vincent — `preprocess` is now its own container; `train` runs in the API
-- Develop automatic model and component updates: // Gabriel + Ziad
-  - Scheduled training: cron script, Jenkins, or Airflow (recommended but more complex). // Thomas - Airflow
+- Develop automatic model and component updates: // Gabriel + Ziad — OPEN (no scheduler yet)
+  - Scheduled training: cron script, Jenkins, or Airflow (recommended but more complex). // Thomas - Airflow. Trigger already exists: `make train` → `POST /train`.
 - ✅ Use **DVC** (without Git) to version datasets. // Ziad — DONE 2026-08-31; MLflow hash logging deferred to the later MLflow stage
-- **(OPTIONAL)** Implement unit tests. // Run inside the CI/CD or docker container // used for API tests (including authorization and authentification). //Thomas + Gabriel
+  - This PR: processed `manifest.json` + sha256 catalog, independent model/metrics pointers, `make dvc-pull` / `dvc-push`. Blobs pushed 2026-09-15.
+- **(OPTIONAL)** Implement unit tests. // Run inside the CI/CD or docker container // used for API tests (including authorization and authentification). // Thomas + Gabriel
+  - ✅ `make test` in `weather-test` (ruff + pytest). Auth, Vault, catalog, Compose. Nginx TLS/429 tests read `nginx.conf` only — not a live handshake. // Ziad — 2026-09-15
 - **(OPTIONAL)** CI/CD pipeline with GitHub Actions: (Recommendation: only master branch)
-  - ✅ `ci.yaml` (always): Linter + Unit tests + Build Docker images. // Gabriel — DONE 2026-09-10
+  - ✅ `ci.yaml` (always): Linter + Unit tests + Build Docker images. // Gabriel — DONE 2026-09-10. This PR also runs the test image.
   - ✅ `release.yaml` (only on master): builds and pushes the three images to the **GitHub Container Registry** (`ghcr.io`) instead of Docker Hub — approved by Nicolas on Slack 2026-09-10. // Gabriel — DONE 2026-09-10
 - **(OPTIONAL)** Optimize and secure the API (basic auth or OAuth2). // Gabriel + Ziad = [NGINX] - Sprint 1 API security module - review the slides from master class - check optional course
-  - Basic auth added on `/predict`, `/predict/live_data`, `/train`. `/health` stays open for the docker healthcheck. Configured through `API_AUTH_USER` / `API_AUTH_PASSWORD` in `.env`. // Gabriel
-  - TODO: NGINX layer (reverse proxy, IP filtering) — separate workstream.
-- **(OPTIONAL)** Implement scalability with Kubernetes. // Thomas
+  - ✅ Basic auth on `/predict`, `/predict/live_data`, `/train`. `/health` stays open for the docker healthcheck. Credentials live in Vault (`API_AUTH_USER` / `API_AUTH_PASSWORD`); local `.env` is only `SUPABASE_URL` + `SUPABASE_KEY`. // Gabriel + Ziad
+  - ✅ Nginx gateway (TLS, HTTP→HTTPS, per-IP rate limits on predict and `/train`). Opt-in Compose profile `gateway`. // Ziad — 2026-09-15
+- **(OPTIONAL)** Implement scalability with Kubernetes. // Thomas — OPEN, later
 
 ### Phase 3: Monitoring & Maintenance — Deadline: Oct 2
 
-- Implement drift detection with **Evidently** in the Airflow pipeline: // Ziad
+- Implement drift detection with **Evidently** in the Airflow pipeline: // Ziad — OPEN (needs Airflow + MLflow first)
   - **Training**:
     - Reference dataset: historical dataset.
     - Current dataset: recent dataset.
@@ -129,8 +131,8 @@ the most recent period, so we are always predicting forward in time).
 - API performance monitoring with **Prometheus / Grafana**: // Thomas
   - Define alerts.
   - Training trigger via built-in Grafana webhook.
-- Create a simple **Streamlit** application to interact with the API and make predictions. // Ziad
-- Finish the repo's technical documentation. // Gabriel (maybe use WIKI - README (first overview - talk about the project setup / goal + setup + technologies) - 
+- ✅ Create a simple **Streamlit** application to interact with the API and make predictions. // Ziad — `make streamlit`, three screens, no `SUPABASE_KEY`. DONE 2026-09-15
+- Finish the repo's technical documentation. // Gabriel (maybe use WIKI - README (first overview - talk about the project setup / goal + setup + technologies) - This PR rewrote README for Compose-first commands; wiki still open. 
 
 ### Final Presentation (Defense) — Oct 13
 
@@ -171,14 +173,17 @@ the most recent period, so we are always predicting forward in time).
 
 ## Docker Microservices
 
-`docker-compose.yml` runs three services, each with its own `Dockerfile` under
-`docker/`:
+`docker-compose.yml` runs jobs that exit and services that stay up, each with
+its own `Dockerfile` under `docker/`:
 
 | Service      | What it does                                        | Type                  |
 | ------------ | --------------------------------------------------- | --------------------- |
 | `ingestion`  | Fetches Open-Meteo data and merges it with the seed | batch job             |
 | `preprocess` | Builds the train/validation/test splits             | batch job             |
 | `api`        | Serves the endpoints, including training            | long running, `:8000` |
+| `nginx`      | TLS + rate limits (`make gateway`)                  | profile `gateway`     |
+| `streamlit`  | Live demo (`make streamlit`)                        | profile `streamlit`   |
+| `test`       | ruff + pytest (`make test`)                         | profile `test`        |
 
 `ingestion` and `preprocess` share the `./data` volume; the API also mounts
 `./models` and `./reports`, because `POST /train` is what writes the new model.
@@ -188,22 +193,26 @@ successfully.
 ### Basic commands
 
 ```bash
-make docker-build   # build the three images
-make docker-up      # run ingestion, then preprocess, then the API
-make docker-logs    # follow the API logs
-make docker-down    # stop and remove the containers
-make docker-api     # start only the API, when the model already exists
+make build          # build images
+make up             # ingestion → preprocess → API, detached
+make logs           # follow API logs
+make down           # stop and remove the containers
+make api            # API only, when the model already exists
+make test           # ruff + pytest in the test container
+make streamlit      # demo on 127.0.0.1:8501
+make gateway        # Nginx TLS + rate limits
+make pipeline       # train → validate → evaluate
 ```
 
-The API is then available at `http://localhost:8000/docs`. No `.env` is needed:
-Open-Meteo works without an API key.
+The API is then available at `http://127.0.0.1:8000/docs`. Local `.env` needs
+`SUPABASE_URL` and `SUPABASE_KEY`; API basic auth is hydrated from Vault.
 
 **Training is never automatic.** No container trains on startup — the model is
 trained only through the API, which is also how Airflow will trigger it:
 
 ```bash
-make train          # POST /train against the running API
-curl -X POST http://localhost:8000/train -H "Content-Type: application/json" -d '{}'
+make api            # detached
+make train          # POST /train against the running API container
 ```
 
 ---
@@ -254,3 +263,13 @@ curl -X POST http://localhost:8000/train -H "Content-Type: application/json" -d 
 - Sep 10 at 10:00 AM — [meeting notes](meetings/internal_meetings/20260910_InternalMeeting_1000AM_CET.md)
 
 Suggestion from Nicolas: https://github.com/minio/minio as local S3 bucket.
+
+---
+
+## Status 2026-09-15 — Ziad
+
+**This PR:** Nginx + Vault auth, sha256 catalog, Compose-first Makefile, Streamlit, `make test`, DVC model pointers pushed, observation-identity SQL applied on the shared project.
+
+**Still open for Ziad:** Evidently drift (Phase 3). Live TLS/429 tests. MLflow init containers with Jonathan.
+
+**Waiting on others:** MLflow (Jonathan), Airflow (Thomas), Prometheus/Grafana (Thomas), wiki (Gabriel).

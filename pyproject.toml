@@ -20,6 +20,7 @@ dependencies = [
     "supabase>=2.31.0",
     "uvicorn>=0.52.4",
     "xgboost>=3.0.0",
+    "streamlit>=1.51.0",
 ]
 
 [project.scripts]
@@ -43,6 +44,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/weather_mlops"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/weather_mlops/demo/styles.css" = "weather_mlops/demo/styles.css"
 
 [tool.ruff]
 line-length = 100

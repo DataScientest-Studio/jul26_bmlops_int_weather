@@ -1,91 +1,246 @@
 # Australian Weather MLOps
 
-Early-stage MLOps project for predicting `RainTomorrow` from the Australian
-weather dataset.
+Predict `RainTomorrow` from Australian weather data. Code lives in Git. Dataset
+files live in Supabase Storage. Postgres keeps the catalog. The FastAPI service
+serves the model. Nginx is the public edge. Streamlit is the short live demo.
 
-This branch keeps the scope intentionally small: reproducible environment,
-Supabase setup, DVC versioning, preprocessing, XGBoost training, evaluation,
-and sample prediction. API work, security, nginx, Docker, Docker Compose,
-Airflow, MLflow, monitoring, and dashboards are later stages.
+The app runtime is **Docker Compose**. DVC stays on the host because it writes
+Git-tracked pointers and a local cache. MLflow and Airflow are **not** in this
+branch.
 
-## What Changed
+## What it does
 
-- Replaced the old scaffold with a minimal package under `src/weather_mlops`.
-- Added a locked `uv` environment through `pyproject.toml`, `uv.lock`, and
-  `.python-version`.
-- Consolidated the Supabase setup into one shared schema at
-  `supabase/schema.sql`.
-- Added DVC without Git integration, with Supabase Storage as the S3-compatible
-  remote.
-- Added a reproducible DVC DAG for dataset metadata, preprocessing, training,
-  evaluation, and prediction.
-- Added a raw merge stage so the Kaggle seed dataset can be combined with
-  future WeatherAUS-compatible incremental snapshots.
-- Added an Open-Meteo fetcher that stores raw JSON responses and
-  WeatherAUS-compatible CSV snapshots.
-- Added XGBoost training and prediction scripts under `src/weather_mlops/models`.
-- Added lightweight JSON metrics and prediction artifacts instead of MLflow.
-- Removed unused scaffold folders, API placeholders, monitoring placeholders,
-  Docker files (will add later).
+| Piece | Role |
+| --- | --- |
+| FastAPI | `/health`, `/predict`, `/predict/live_data`, `/train` |
+| HTTP Basic Auth | Protects predict and train. `/health` stays open. |
+| Nginx (`make gateway`) | TLS, HTTP→HTTPS, per-IP rate limits |
+| Streamlit (`make streamlit`) | Three-screen deck that calls the API with the same basic auth |
+| Supabase Vault | Stores S3 keys and API basic auth. Hydrated from `SUPABASE_URL` + `SUPABASE_KEY` |
+| `dataset_versions` | Production lineage: sha256 identity, snapshot URI, git commit |
+| DVC (`no_scm`) | Developer restore (`make dvc-pull`). Not the production catalog. |
 
-The real `.env` file is not committed because GitHub push protection blocks
-Supabase secrets. Use `.env.example` for the required variable names, then get
-the real shared values from the team chat and put them in your local `.env`.
+A typical call:
+
+1. Client sends `POST /predict` with `Authorization: Basic ...`.
+2. FastAPI checks `API_AUTH_USER` / `API_AUTH_PASSWORD` (from Vault, copied into
+   the process environment at startup).
+3. Wrong or missing credentials → **401**. Missing Vault auth secrets fail
+   startup (or **503** if they disappear after the process is already up).
+4. Valid request → the joblib pipeline. Missing model → **404**.
+5. If you put Nginx in front, rate limits hit **before** FastAPI. `/train` is
+   tighter than predict.
+
+Streamlit never receives `SUPABASE_KEY`. `make streamlit` hydrates basic auth
+from Vault on the host and passes only that pair into the Streamlit container.
+
+## Commands
+
+Jobs (ingestion, preprocess, test, train) start, do the work, and exit.
+Long-running services (API, Nginx, Streamlit) start detached. Follow them with
+`make logs` (`SERVICE=nginx` or `SERVICE=streamlit` if needed).
+
+| You want | Command |
+| --- | --- |
+| Restore the shared baseline | `make dvc-config && make dvc-pull && make api` |
+| Refresh Open-Meteo, rebuild splits, serve | `make up` |
+| Tests (ruff + pytest in `weather-test`) | `make test` |
+| Retrain, then held-out metrics | `make pipeline` |
+| Public HTTPS + rate limits | `make gateway` |
+| Streamlit on `127.0.0.1:8501` | `make streamlit` |
+| Follow logs / stop | `make logs` / `make down` |
+
+One-shot extras, still Compose: `make train`, `make validate`, `make evaluate`,
+`make predict`, `make fetch-open-meteo OPEN_METEO_DATE=YYYY-MM-DD`,
+`make register-dataset`, `make load-db`. Dry-run catalog or DB load with
+`ARGS='--dry-run'`.
+
+Host-only DVC (not Compose): `make dvc-config`, `make dvc-pull`,
+`make dvc-push`, `make dvc-repro`, `make dvc-add-model`, `make dvc-commit`.
+
+## Local `.env`
+
+Copy the example, then paste the two shared Supabase values from the team chat.
 Do not commit `.env`.
 
-## Repository Structure
-
-```text
-.
-+-- src/weather_mlops/
-|   +-- config/                 # Shared settings
-|   +-- data/                   # Preprocessing, DVC metadata, DB helpers
-|   +-- models/                 # Training, evaluation, prediction
-+-- scripts/                    # One-time local helpers
-+-- tests/unit/                 # Focused unit tests
-+-- references/                 # Small tracked config files
-+-- supabase/schema.sql         # Canonical Supabase schema
-+-- supabase/migrations/        # Tracked Supabase migration SQL
-+-- data/                       # Local DVC outputs, ignored by Git
-+-- models/                     # Local model artifact, ignored by Git
-+-- reports/metrics/            # DVC metric outputs, ignored by Git
-+-- dvc.yaml                    # Reproducible pipeline DAG
-+-- dvc.lock                    # Current DVC artifact hashes
-+-- params.yaml                 # Pipeline parameters
-+-- Makefile                    # Common local entry points
-+-- pyproject.toml              # uv dependencies and tool config
-+-- requirements.txt            # Exported dependency snapshot for compatibility
-+-- uv.lock                     # Locked uv environment
+```bash
+cp .env.example .env
 ```
 
-## Data Flow
+Required:
 
-The raw Kaggle CSV was downloaded once, added to DVC, and pushed to the
-Supabase Storage remote. Teammates should not need to download from Kaggle in
-the normal workflow; `make pull` restores the DVC-tracked artifacts from
-Supabase.
+```text
+SUPABASE_URL=https://<project-ref>.supabase.co
+SUPABASE_KEY=<supabase-service-role-or-sb_secret-key>
+```
 
-Fresh weather observations should enter the project as immutable snapshots
-under `data/raw/incremental/`. Those snapshots are normalized to the same
-WeatherAUS columns, versioned by DVC, and merged with the Kaggle seed into
-`data/raw/weatherAUS_current.csv`. The model pipeline trains from that merged
-current dataset.
+Everything else is in Vault under the same names:
 
-The active reproducible flow is:
+```text
+AWS_ACCESS_KEY_ID
+AWS_SECRET_ACCESS_KEY
+API_AUTH_USER
+API_AUTH_PASSWORD
+```
 
-1. DVC restores `data/raw/weatherAUS.csv` and `data/raw/incremental/`.
-2. `weather_mlops.data.merge_raw` writes `data/raw/weatherAUS_current.csv`.
-3. `weather_mlops.data.versioning` writes file size, MD5, and SHA256 metadata
-   for the merged current dataset.
-4. `weather_mlops.data.preprocess` cleans the raw rows, sorts by date, removes
-   `Date` from model features, maps `RainTomorrow` to `0/1`, and writes
-   chronological train/validation/test feature and label splits.
-5. `weather_mlops.models.training` trains only from `X_train.csv` and
-   `y_train.csv`, then writes the model artifact and training metrics.
-6. `weather_mlops.models.evaluation` evaluates the saved model on validation
-   and test splits.
-7. `weather_mlops.models.predict` loads the saved model and predicts one JSON
-   sample. This is the function the future API can call.
+The API container only receives the two bootstrap values and hydrates auth at
+startup. Rotate a Vault secret, then restart the API container (`make api`).
+Hydration is a startup snapshot, not live reload.
+
+Do not put `API_AUTH_USER` / `API_AUTH_PASSWORD` in `.env`. Compose only needs
+them for `make streamlit`, which copies the pair from Vault into the Streamlit
+container. Other compose commands use empty defaults so they do not warn.
+
+`make dvc-config` writes S3 keys in plaintext to ignored `.dvc/config.local`.
+Keep that file local and restrictive (`chmod 600`).
+
+The API port is localhost-only (`127.0.0.1:8000`). Public access goes through
+Nginx. If Vault has no `API_AUTH_USER` / `API_AUTH_PASSWORD` yet, the API
+process will not start.
+
+## Workflows
+
+### Restore the published baseline
+
+Teammates should restore artifacts, not rebuild them:
+
+```bash
+cp .env.example .env          # SUPABASE_URL + SUPABASE_KEY only
+make dvc-config
+make dvc-pull
+make test                     # ruff + pytest in the test container
+make api                      # API only, detached on 127.0.0.1:8000
+curl http://127.0.0.1:8000/health
+```
+
+`make dvc-pull` downloads the DVC-versioned raw data, processed splits,
+manifest, API model (`models/rain_classifier.joblib.dvc`), and metrics. That is
+the shared baseline.
+
+### Refresh data (optional)
+
+`make up` runs the ingestion job, then preprocess, then the API. The two jobs
+exit when they finish. Pin the fetch date with `OPEN_METEO_DATE=YYYY-MM-DD`.
+
+```bash
+make up
+make register-dataset
+make logs                     # API is already in the background
+```
+
+`make dvc-repro` is the DVC-only variant (merge + version + preprocess, no
+Docker jobs). Use it when publishing lock hashes, not as the daily runtime.
+
+### Train and evaluate
+
+```bash
+make api                      # if it is not already up
+make pipeline                 # POST /train, then validation, then test metrics
+```
+
+`/train` returns training-set metrics. Held-out numbers come from validate and
+evaluate. The individual steps are still `make train`, `make validate`,
+`make evaluate` if you want them one at a time.
+
+### Publish a new baseline
+
+After you intend the local artifacts to become the team restore point:
+
+```bash
+make dvc-repro
+make pipeline
+make register-dataset
+make dvc-add-model
+make dvc-commit
+make dvc-push
+git add dvc.lock models/rain_classifier.joblib.dvc reports/metrics/train.json.dvc
+```
+
+Commit the updated DVC pointers with the code. Verify from an empty `data/`
+and `models/` with `make dvc-pull`.
+
+### Nginx gateway
+
+```bash
+make gateway
+```
+
+- Port 80 redirects to HTTPS.
+- Port 443 terminates TLS (self-signed cert generated at container start).
+- Predict routes: 10 requests/second per IP, burst 20.
+- `/train`: 1 request/second per IP, burst 3.
+- Security headers (HSTS, nosniff, deny framing).
+- `/docs` and `/redoc` use a looser CSP so Swagger UI can load.
+
+Basic auth is still checked by FastAPI behind Nginx. Nginx does not replace it.
+
+### Streamlit
+
+```bash
+make streamlit
+```
+
+Then open `http://127.0.0.1:8501`. Three screens: architecture, stores, live
+predict. The live screen calls `/health` (open) and `/predict/live_data`
+(basic auth hydrated from Vault by `make streamlit`).
+
+### Dataset catalog
+
+Hash a local file, upload an immutable snapshot to `s3://weather-mlops-dvc`,
+and upsert `dataset_versions`:
+
+```bash
+make register-dataset
+```
+
+Identity is **sha256**. Uploading the same object twice is a no-op. Keys look
+like `raw/<sha>/...` and `processed/<sha>/...`. Default `--kind all` registers
+the raw CSV plus the six processed splits and `manifest.json` under one
+combined CSV hash. That hash is the same `dataset_sha256` training records.
+
+Observation identity is `(date, location)`. Apply
+`supabase/migrations/20260915140000_observation_identity.sql` in the shared
+SQL editor before the next `make load-db` on that project.
+
+## API contract
+
+| Method | Path | Auth | Notes |
+| --- | --- | --- | --- |
+| `GET` | `/health` | none | Docker healthcheck uses this |
+| `POST` | `/predict` | basic | location + at least 3 weather fields |
+| `POST` | `/predict/live_data` | basic | location only; fetches Open-Meteo |
+| `POST` | `/train` | basic | retrains, writes `models/rain_classifier.joblib` |
+
+Compose injects `SUPABASE_URL` and `SUPABASE_KEY` into the API container. The
+API hydrates `API_AUTH_USER` / `API_AUTH_PASSWORD` from Vault. The Streamlit
+container gets the auth pair (via `make streamlit`) and
+`DEMO_API_URL=http://api:8000`. It does **not** get `SUPABASE_KEY`.
+
+## Repository layout
+
+```text
+src/weather_mlops/
+  api/            FastAPI app (Gabriel's basic auth + Vault hydrate)
+  config/         Shared settings
+  data/           Preprocess, DVC metadata, catalog, snapshots
+  demo/           Streamlit deck
+  models/         Train, evaluate, predict
+  security/       Vault helper only (no JWT)
+docker/
+  api/            API image (copies src/ + scripts/)
+  nginx/          TLS + rate limits
+  demo/           Streamlit image
+  test/           pytest image
+  ingestion/      One-shot ingest job
+  preprocess/     One-shot preprocess job
+scripts/          One-time helpers (DVC remote, catalog, loaders)
+supabase/         schema.sql + migrations
+tests/unit/       Config and auth checks (nginx.conf, compose, Vault, catalog)
+```
+
+## Data flow (developer machine)
+
+Git does not store the CSVs. DVC does. Production lineage is Postgres.
 
 ```mermaid
 flowchart TD
@@ -106,8 +261,9 @@ flowchart TD
     preprocess_code --> yval["data/processed/y_validation.csv"]
     preprocess_code --> xtest["data/processed/X_test.csv"]
     preprocess_code --> ytest["data/processed/y_test.csv"]
+    preprocess_code --> manifest["data/processed/manifest.json"]
 
-    xtrain --> train_code["src/weather_mlops/models/training.py"]
+    xtrain --> train_code["POST /train (API)"]
     ytrain --> train_code
     train_code --> model["models/rain_classifier.joblib"]
     train_code --> train_metrics["reports/metrics/train.json"]
@@ -125,304 +281,36 @@ flowchart TD
     predict_code --> prediction["data/predictions/sample_prediction.json"]
 ```
 
-## Fresh Weather Data
-
-The original Kaggle file is a historical seed dataset. For fresh Australian
-weather observations, use Open-Meteo because it provides public historical
-weather access without a project API key for this early non-commercial stage,
-JSON responses, global coordinate coverage, daily aggregates, and hourly
-observations.
-
-The fetch script queries the configured WeatherAUS locations in
-`references/weather_locations.csv`. For each location and date it stores the raw
-Open-Meteo JSON and a normalized WeatherAUS-compatible CSV snapshot under
-`data/raw/incremental/`.
+The Kaggle CSV is a historical seed. Fresh days come from Open-Meteo:
 
 ```bash
 make fetch-open-meteo OPEN_METEO_DATE=2026-09-01
-uv run dvc add data/raw/incremental
-make repro
-make push
+make dvc-commit
+make dvc-repro
+make dvc-push
 ```
 
-Use a fully observed historical date. In practice, that usually means fetching
-two days ago, because `RainTomorrow` for a given row depends on the following
-day's rainfall.
+Use a fully observed historical date (usually two days ago), because
+`RainTomorrow` needs the next day's rain. Later, Airflow will own that loop.
 
-Open-Meteo returns wind speeds in km/h when requested with
-`wind_speed_unit=kmh`, matching WeatherAUS-style wind columns. Cloud cover is
-converted from percent to oktas (`0`-`8`). Sunshine duration is converted from
-seconds to hours. Evapotranspiration is mapped to the WeatherAUS `Evaporation`
-column as the closest available daily proxy.
+## Supabase
 
-Later, Airflow should own the scheduled fetch step:
+Shared project schema is in `supabase/schema.sql` and
+`supabase/migrations/`. Current tables/buckets used here:
 
-1. Run `make fetch-open-meteo OPEN_METEO_DATE=<yyyy-mm-dd>`.
-2. Run `uv run dvc add data/raw/incremental`.
-3. Run `make repro`.
-4. Run `make push`.
-5. Optionally run `make load-db` to update Supabase Postgres metadata and rows.
-
-## Weather API Choice
-
-We compared Open-Meteo, OpenWeather, and The Weather Company/Weather.com for
-fresh weather ingestion.
-
-Open-Meteo is the current choice because it keeps this phase simple:
-
-- No API key is required for this early non-commercial workflow.
-- Historical data is available through one archive endpoint.
-- The endpoint returns JSON and downloadable CSV.
-- It supports the hourly and daily variables needed to approximate the
-  WeatherAUS columns: temperature, humidity, pressure, rain, cloud cover, wind
-  speed, wind direction, wind gusts, sunshine duration, and evapotranspiration.
-- It supports Australian coordinates directly, so we can fetch the same
-  WeatherAUS locations listed in `references/weather_locations.csv`.
-
-OpenWeather was not chosen for now because the useful endpoints for this
-pipeline are under One Call API 3.0. Those endpoints support historical
-timestamp and daily aggregation data, but they require a separate One Call
-subscription/activation even though some calls may be free. That adds account
-and billing setup before the team can reproduce the pipeline.
-
-The Weather Company/Weather.com was not chosen for now because it is also
-API-key based and oriented around provisioned trial or paid access. It has
-strong enterprise weather products, but it adds more setup friction than we
-need for the first reproducible local pipeline.
-
-The tradeoff is that Open-Meteo values are model/reanalysis based at grid-cell
-coordinates, while the Kaggle seed was built from station observations. That is
-acceptable for this stage because the goal is to prove reproducible ingestion,
-versioning, preprocessing, training, and evaluation. Later, the team can revisit
-provider choice if station-level accuracy or enterprise data access becomes a
-hard requirement.
-
-References:
-
-- [Open-Meteo Historical Weather API](https://open-meteo.com/en/docs/historical-weather-api)
-- [OpenWeather One Call API 3.0](https://openweathermap.org/api/one-call-3)
-- [The Weather Company API docs](https://developer.weather.com/docs/getting-started)
-
-## Supabase State
-
-Supabase is already initialized for this branch. The SQL used for that setup is
-kept in `supabase/schema.sql`, with the matching migration tracked under
-`supabase/migrations/`, so the team can recreate the same tables and bucket if
-a new Supabase project is needed later.
-
-The schema creates:
-
-- `public.weather_observations`, using the WeatherAUS columns loaded by
-  `scripts/load_to_supabase.py`
-- `public.dataset_versions`, storing dataset path, size, MD5, SHA256, and
-  creation time
-- private Storage bucket `weather-mlops-dvc`, used as the DVC remote
-- future tables for `public.model_versions`, `public.predictions`, and
-  `public.drift_reports`
-
-Gabriel's future-facing API, prediction, model, and drift tables are kept in
-the shared schema. The current Phase 1 code writes only to
-`weather_observations` and `dataset_versions`.
-
-## Local Secrets
-
-The repository tracks `.env.example`, not `.env`.
-
-After pulling the branch, create your local `.env` manually:
-
-```bash
-cp .env.example .env
-```
-
-Then open `.env` and replace every placeholder with the shared Supabase values
-from the team chat. The values that must be filled manually are:
-
-- `SUPABASE_URL`
-- `SUPABASE_KEY`
-- `SUPABASE_S3_ENDPOINT`
-- `AWS_ACCESS_KEY_ID`
-- `AWS_SECRET_ACCESS_KEY`
-
-Keep the table names, DVC remote name, DVC bucket URL, region, and split
-fractions as they are unless the team intentionally changes the project setup.
-
-Do not push real `.env` values to GitHub. `.env` is ignored by Git, and
-`.dvc/config.local` is also ignored because it stores the local DVC remote
-credentials after `make dvc-config`.
-
-The tracked `.env.example` contains the required variable names:
-
-```text
-SUPABASE_URL=https://<project-ref>.supabase.co
-SUPABASE_KEY=<supabase-secret-key>
-SUPABASE_WEATHER_TABLE=weather_observations
-SUPABASE_DATASET_VERSIONS_TABLE=dataset_versions
-DVC_REMOTE_NAME=supabase
-DVC_REMOTE_URL=s3://weather-mlops-dvc
-SUPABASE_S3_ENDPOINT=https://<project-ref>.storage.supabase.co/storage/v1/s3
-AWS_ACCESS_KEY_ID=<supabase-storage-access-key-id>
-AWS_SECRET_ACCESS_KEY=<supabase-storage-secret-access-key>
-AWS_DEFAULT_REGION=eu-west-1
-RANDOM_STATE=42
-TRAIN_FRACTION=0.7
-VALIDATION_FRACTION=0.15
-```
-
-`SUPABASE_KEY` is the shared Supabase server-side key used by the Python loader
-to write database rows.
-`AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` come from Supabase Storage >
-Configuration > S3 and are used by DVC.
-
-Supabase Postgres stores queryable rows and dataset metadata. Supabase Storage
-stores DVC objects. DVC provides versioning by hashing artifacts and pushing
-content-addressed files to the Storage bucket.
-
-## After Pulling
-
-Run this from the repository root:
-
-```bash
-uv sync
-cp .env.example .env
-# manually paste the shared Supabase values into .env
-make dvc-config
-make pull
-make repro
-make check
-```
-
-`make dvc-config` writes DVC credentials to `.dvc/config.local` with
-`dvc remote modify --local`. That file is generated locally and ignored by Git.
-
-`make pull` downloads the DVC-versioned raw data, processed data, model,
-metrics, and prediction artifacts from Supabase Storage.
-
-`make repro` reruns the DAG from `dvc.yaml`. If nothing changed, DVC should
-report that every stage is unchanged.
-
-## Inference API
-
-A FastAPI service exposes the trained model for predictions and retraining.
-
-Endpoints:
-- `GET /health` reports whether the API is running and whether a trained model is available. Open (no creds) so docker compose's healthcheck and orchestration tools can hit it.
-- `POST /predict` predicts rain tomorrow from manually provided weather features (`location` and at least 3 weather conditions are required. The remaining fields are optional and missing values are imputed by the trained pipeline). Requires basic auth.
-- `POST /predict/live_data` predicts rain tomorrow using live weather data fetched from Open-Meteo for the given location (only `location` is required). Requires basic auth.
-- `POST /train` retrains the model with configurable XGBoost hyperparameters and returns evaluation metrics. Requires basic auth.
-
-`/health` stays open so the docker healthcheck in `docker-compose.yml` keeps working.
-
-Basic auth reads `API_AUTH_USER` and `API_AUTH_PASSWORD` from `.env` (and from
-the `api` service's `environment:` block in `docker-compose.yml`). Set them
-locally once:
-
-```bash
-# .env
-API_AUTH_USER=your-username
-API_AUTH_PASSWORD=your-strong-password
-```
-
-Then call the protected endpoints with curl using `-u user:pass`:
-
-```bash
-curl -u "$API_AUTH_USER:$API_AUTH_PASSWORD" -X POST http://localhost:8000/predict \
-    -H "Content-Type: application/json" \
-    -d '{"location": "Sydney", "rainfall": 0.0, "humidity_3pm": 30.0, "pressure_3pm": 1015.0}'
-```
-
-If the env vars are missing, the protected endpoints return **503** with a
-clear message instead of staying open by accident.
-
-Run locally:
-
-    make api
-
-Then open `http://127.0.0.1:8000/docs` for interactive API documentation.
-
-## Useful Commands
-
-```bash
-make check      # lint, format check, unit tests
-make repro      # run the DVC pipeline
-make pull       # pull DVC artifacts from Supabase Storage
-make push       # push DVC artifacts to Supabase Storage
-make merge-raw  # merge Kaggle seed data with incremental raw snapshots
-make preprocess # build the train/validation/test splits
-make train      # ask the running API to retrain (POST /train)
-make validate   # evaluate the model on the validation split
-make evaluate   # run evaluation directly
-make predict    # write sample prediction JSON
-make fetch-open-meteo # fetch Open-Meteo JSON and normalized CSV snapshots
-make load-db    # load raw weather rows and metadata into Supabase Postgres
-make api        # start inference API locally with auto-reload
-```
-
-The one-time Kaggle helper is outside `src` because it is not part of the
-reproducible runtime pipeline:
-
-```bash
-uv run --with kaggle python scripts/download_weatheraus_from_kaggle.py
-```
-
-To validate Supabase table compatibility without writing rows:
-
-```bash
-uv run python scripts/load_to_supabase.py --dry-run
-```
-
-To inspect the current DVC state:
-
-```bash
-uv run dvc status
-uv run dvc status -c
-uv run dvc metrics show
-```
-
-## Current Dataset Metadata
-
-The current merged raw dataset has repo-relative metadata:
-
-```text
-dataset_name: weatherAUS
-path: data/raw/weatherAUS_current.csv
-md5: 06b1da4ba0778152250267b3ecab2f13
-sha256: 5f9a9cff896cd4be2a358891943361c1caaaa4e26448703d5da2639ebe7e155e
-```
-
-## Current Outputs
-
-- `data/raw/incremental/`
-- `data/raw/weatherAUS_current.csv`
-- `data/metadata/weatherAUS.json`
-- `data/processed/X_train.csv`
-- `data/processed/y_train.csv`
-- `data/processed/X_validation.csv`
-- `data/processed/y_validation.csv`
-- `data/processed/X_test.csv`
-- `data/processed/y_test.csv`
-- `models/rain_classifier.joblib`
-- `reports/metrics/train.json`
-- `reports/metrics/validation.json`
-- `reports/metrics/evaluation.json`
-- `data/predictions/sample_prediction.json`
-
-These files are ignored by Git and versioned through DVC.
+- `weather_observations` — queryable rows
+- `dataset_versions` — snapshot catalog (sha256, storage URI, lineage)
+- `ingestion_batches`
+- private bucket `weather-mlops-dvc`
+- Vault RPC `public.get_app_secret` — reads S3 keys and API basic auth at startup
+- `weather-mlops-mlflow` bucket exists in SQL for Jonathan's later work; this
+  branch does not run an MLflow server
 
 ## CI
 
-GitHub Actions runs on pushes and pull requests to `master` or `main`:
+On pushes and pull requests to `master` / `main`:
 
-- `uv sync --locked --all-groups`
-- `ruff check .`
-- `ruff format --check .`
-- `pytest`
+- Host: `uv sync --locked --all-groups`, ruff, pytest
+- Docker: build gateway/streamlit/test images, then
+  `docker compose --profile test run --rm test`
 
-Docker build checks are intentionally not included yet because containerization
-will be handled in a later project stage.
-
-## Next Steps
-
-- Keep reproducible ML code inside `src/weather_mlops/...`.
-- Keep one-time local helpers inside `scripts/...`.
-- Add API security/nginx, Docker/Docker Compose, Airflow orchestration, MLflow,
-  and monitoring only when those project stages start.

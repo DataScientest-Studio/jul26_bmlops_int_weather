@@ -1,5 +1,6 @@
 # ingestion and preprocess are jobs: they run once and stop. the api stays up.
 # there is no training job here: training happens only when someone calls POST /train.
+# Profiles: gateway (Nginx TLS + rate limits), streamlit, test (pytest).
 
 services:
   ingestion:
@@ -7,9 +8,10 @@ services:
       context: .
       dockerfile: docker/ingestion/Dockerfile
     image: weather-ingestion:latest
-    container_name: weather_ingestion
     networks:
       - weather_network
+    environment:
+      OPEN_METEO_DATE: ${OPEN_METEO_DATE:-}
     volumes:
       - ./data:/app/data
 
@@ -18,9 +20,10 @@ services:
       context: .
       dockerfile: docker/preprocess/Dockerfile
     image: weather-preprocess:latest
-    container_name: weather_preprocess
     networks:
       - weather_network
+    environment:
+      GIT_COMMIT: ${GIT_COMMIT:-}
     volumes:
       # read and write, this job writes the train/validation/test splits
       - ./data:/app/data
@@ -33,18 +36,18 @@ services:
     build:
       context: .
       dockerfile: docker/api/Dockerfile
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-}
     image: weather-api:latest
-    container_name: weather_api
     networks:
       - weather_network
     ports:
-      - "8000:8000"
-    # The api now requires basic auth on /predict, /predict/live_data, /train.
-    # Values come from the local .env so a real password never lands in the
-    # tracked compose file or in the published docker image.
+      - "127.0.0.1:8000:8000"
+    # URL + key only. Basic auth comes from Vault at process start.
     environment:
-      API_AUTH_USER: ${API_AUTH_USER}
-      API_AUTH_PASSWORD: ${API_AUTH_PASSWORD}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_KEY: ${SUPABASE_KEY:-}
+      GIT_COMMIT: ${GIT_COMMIT:-}
     volumes:
       # read only, the api must not change the dataset
       - ./data:/app/data:ro
@@ -60,6 +63,57 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  nginx:
+    profiles: ["gateway"]
+    build:
+      context: .
+      dockerfile: docker/nginx/Dockerfile
+    image: weather-nginx:latest
+    networks:
+      - weather_network
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  streamlit:
+    profiles: ["streamlit"]
+    build:
+      context: .
+      dockerfile: docker/demo/Dockerfile
+    image: weather-demo:latest
+    networks:
+      - weather_network
+    ports:
+      - "127.0.0.1:8501:8501"
+    environment:
+      DEMO_API_URL: http://api:8000
+      # Not in .env. `make streamlit` hydrates these from Vault first.
+      # Empty defaults keep other compose commands from warning.
+      API_AUTH_USER: ${API_AUTH_USER:-}
+      API_AUTH_PASSWORD: ${API_AUTH_PASSWORD:-}
+    depends_on:
+      api:
+        condition: service_healthy
+
+  test:
+    profiles: ["test"]
+    build:
+      context: .
+      dockerfile: docker/test/Dockerfile
+    image: weather-test:latest
+    working_dir: /app
+    volumes:
+      - .:/app
+    environment:
+      PYTHONPATH: /app/src
+    command:
+      - sh
+      - -c
+      - ruff check . && ruff format --check . && pytest -v
 
 networks:
   weather_network:

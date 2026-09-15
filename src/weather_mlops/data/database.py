@@ -88,25 +88,95 @@ def store_weather_observations(
     for batch in chunk_records(records, batch_size):
         supabase.table(settings.supabase_weather_table).upsert(
             batch,
-            on_conflict="source_row_number",
+            on_conflict="date,location",
         ).execute()
 
     return len(records)
+
+
+def _existing_dataset_row(client: Client, dataset_name: str, sha256: str) -> dict[str, Any] | None:
+    response = (
+        client.table(settings.supabase_dataset_versions_table)
+        .select(
+            "storage_uri,created_at,git_commit,preprocessing_version,"
+            "parent_sha256,created_by,source,version_kind"
+        )
+        .eq("dataset_name", dataset_name)
+        .eq("sha256", sha256)
+        .limit(1)
+        .execute()
+    )
+    rows = response.data or []
+    return rows[0] if rows else None
 
 
 def store_dataset_metadata(
     metadata: DatasetMetadata,
     client: Client | None = None,
 ) -> None:
+    """Upsert catalog identity. Never replace a stored URI with null.
+
+    Repeat loads keep the original created_at and fill only blank lineage
+    fields. Snapshot registration remains the source of storage_uri.
+    """
+
     supabase = client or get_supabase_client()
+    payload: dict[str, Any] = {
+        "dataset_name": metadata.dataset_name,
+        "path": metadata.path,
+        "size_bytes": metadata.size_bytes,
+        "md5": metadata.md5,
+        "sha256": metadata.sha256,
+        "created_at": metadata.created_at or datetime.now(UTC).isoformat(),
+        "version_kind": metadata.version_kind,
+        "storage_uri": metadata.storage_uri,
+        "git_commit": metadata.git_commit,
+        "preprocessing_version": metadata.preprocessing_version,
+        "parent_sha256": metadata.parent_sha256,
+        "source": metadata.source,
+        "created_by": metadata.created_by,
+    }
+    existing = _existing_dataset_row(supabase, metadata.dataset_name, metadata.sha256)
+    if existing:
+        if existing.get("created_at"):
+            payload["created_at"] = existing["created_at"]
+        for field in (
+            "storage_uri",
+            "git_commit",
+            "preprocessing_version",
+            "parent_sha256",
+            "created_by",
+            "source",
+            "version_kind",
+        ):
+            if not payload.get(field) and existing.get(field):
+                payload[field] = existing[field]
+
     supabase.table(settings.supabase_dataset_versions_table).upsert(
-        {
-            "dataset_name": metadata.dataset_name,
-            "path": metadata.path,
-            "size_bytes": metadata.size_bytes,
-            "md5": metadata.md5,
-            "sha256": metadata.sha256,
-            "created_at": metadata.created_at or datetime.now(UTC).isoformat(),
-        },
+        payload,
         on_conflict="dataset_name,sha256",
+    ).execute()
+
+
+def store_ingestion_batch(
+    *,
+    batch_date: str,
+    storage_uri: str,
+    sha256: str,
+    location_count: int | None = None,
+    source: str = "open-meteo",
+    git_commit: str | None = None,
+    client: Client | None = None,
+) -> None:
+    supabase = client or get_supabase_client()
+    supabase.table(settings.supabase_ingestion_batches_table).upsert(
+        {
+            "batch_date": batch_date,
+            "location_count": location_count,
+            "storage_uri": storage_uri,
+            "sha256": sha256,
+            "source": source,
+            "git_commit": git_commit,
+        },
+        on_conflict="batch_date,sha256",
     ).execute()

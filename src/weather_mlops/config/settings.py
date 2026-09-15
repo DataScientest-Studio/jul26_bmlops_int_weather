@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     raw_data_path: Path = PROJECT_ROOT / "data" / "raw" / "weatherAUS_current.csv"
     weather_locations_path: Path = PROJECT_ROOT / "references" / "weather_locations.csv"
     processed_data_dir: Path = PROJECT_ROOT / "data" / "processed"
+    processed_manifest_path: Path = PROJECT_ROOT / "data" / "processed" / "manifest.json"
     x_train_path: Path = PROJECT_ROOT / "data" / "processed" / "X_train.csv"
     x_validation_path: Path = PROJECT_ROOT / "data" / "processed" / "X_validation.csv"
     x_test_path: Path = PROJECT_ROOT / "data" / "processed" / "X_test.csv"
@@ -34,11 +35,14 @@ class Settings(BaseSettings):
     validation_metrics_path: Path = PROJECT_ROOT / "reports" / "metrics" / "validation.json"
     evaluation_metrics_path: Path = PROJECT_ROOT / "reports" / "metrics" / "evaluation.json"
 
-    # Supabase
+    # Supabase. Local .env only needs SUPABASE_URL + SUPABASE_KEY.
+    # S3 keys and API basic auth come from Vault when they are not already set.
     supabase_url: str | None = None
     supabase_key: str | None = None
     supabase_weather_table: str = "weather_observations"
     supabase_dataset_versions_table: str = "dataset_versions"
+    supabase_ingestion_batches_table: str = "ingestion_batches"
+    supabase_datasets_bucket: str = "weather-mlops-dvc"
 
     # DVC remote backed by Supabase Storage's S3-compatible API.
     dvc_remote_name: str = "supabase"
@@ -46,7 +50,11 @@ class Settings(BaseSettings):
     supabase_s3_endpoint: str | None = None
     aws_access_key_id: str | None = None
     aws_secret_access_key: str | None = None
-    aws_default_region: str = "local"
+    aws_default_region: str = "eu-west-1"
+
+    # FastAPI HTTP Basic. Names match Vault / the process environment.
+    api_auth_user: str | None = None
+    api_auth_password: str | None = None
 
     # Model
     random_state: int = 42
