@@ -29,10 +29,9 @@ def test_every_built_service_dockerfile_exists():
 def test_core_pipeline_services_are_there():
     services = load_services()
 
-    assert {"api", "ingestion", "preprocess", "streamlit", "test"} <= set(services)
+    assert {"api", "ingestion", "preprocess", "streamlit", "test", "mlflow"} <= set(services)
     assert "trainer" not in services, "the trainer service was replaced by preprocess"
     assert "nginx" in services
-    assert "mlflow" not in services
     assert "minio" not in services
 
 
@@ -43,6 +42,7 @@ def test_nginx_is_an_opt_in_profile():
 def test_demo_and_test_are_opt_in_profiles():
     assert load_services()["streamlit"]["profiles"] == ["streamlit"]
     assert load_services()["test"]["profiles"] == ["test"]
+    assert load_services()["mlflow"]["profiles"] == ["mlflow"]
 
 
 def test_demo_does_not_receive_the_service_role_key():
@@ -79,10 +79,19 @@ def test_api_port_is_bound_to_localhost():
     assert "127.0.0.1:8000:8000" in load_services()["api"]["ports"]
 
 
+def test_mlflow_port_is_bound_to_localhost():
+    assert "127.0.0.1:8080:8080" in load_services()["mlflow"]["ports"]
+
+
 def test_api_only_receives_supabase_bootstrap_env():
     env = load_services()["api"]["environment"]
 
-    assert {"SUPABASE_URL", "SUPABASE_KEY", "GIT_COMMIT"} == set(env)
+    assert {
+        "SUPABASE_URL",
+        "SUPABASE_KEY",
+        "GIT_COMMIT",
+        "MLFLOW_TRACKING_URI",
+    } == set(env)
     assert "API_AUTH_PASSWORD" not in env
 
 

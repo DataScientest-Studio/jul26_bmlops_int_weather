@@ -43,7 +43,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build the images
-        run: docker compose --profile gateway --profile streamlit --profile test build
+        run: docker compose --profile gateway --profile streamlit --profile test --profile mlflow build
 
       - name: Run lint and tests in the test image
         run: docker compose --profile test run --rm test

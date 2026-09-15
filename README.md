@@ -5,8 +5,8 @@ files live in Supabase Storage. Postgres keeps the catalog. The FastAPI service
 serves the model. Nginx is the public edge. Streamlit is the short live demo.
 
 The app runtime is **Docker Compose**. DVC stays on the host because it writes
-Git-tracked pointers and a local cache. MLflow and Airflow are **not** in this
-branch.
+Git-tracked pointers and a local cache. MLflow tracking is an opt-in Compose
+profile (`make mlflow`). Airflow is not in this branch.
 
 ## What it does
 
@@ -19,6 +19,7 @@ branch.
 | Supabase Vault | Stores S3 keys and API basic auth. Hydrated from `SUPABASE_URL` + `SUPABASE_KEY` |
 | `dataset_versions` | Production lineage: sha256 identity, snapshot URI, git commit |
 | DVC (`no_scm`) | Developer restore (`make dvc-pull`). Not the production catalog. |
+| MLflow (`make mlflow`) | Tracking + registry on `127.0.0.1:8080`. `/train` logs when the server is up. |
 
 A typical call:
 
@@ -48,10 +49,11 @@ Long-running services (API, Nginx, Streamlit) start detached. Follow them with
 | Retrain, then held-out metrics | `make pipeline` |
 | Public HTTPS + rate limits | `make gateway` |
 | Streamlit on `127.0.0.1:8501` | `make streamlit` |
+| MLflow UI on `127.0.0.1:8080` | `make mlflow` |
 | Follow logs / stop | `make logs` / `make down` |
 
 One-shot extras, still Compose: `make train`, `make validate`, `make evaluate`,
-`make predict`, `make fetch-open-meteo OPEN_METEO_DATE=YYYY-MM-DD`,
+`make compare`, `make predict`, `make fetch-open-meteo OPEN_METEO_DATE=YYYY-MM-DD`,
 `make register-dataset`, `make load-db`. Dry-run catalog or DB load with
 `ARGS='--dry-run'`.
 
@@ -303,14 +305,14 @@ Shared project schema is in `supabase/schema.sql` and
 - `ingestion_batches`
 - private bucket `weather-mlops-dvc`
 - Vault RPC `public.get_app_secret` — reads S3 keys and API basic auth at startup
-- `weather-mlops-mlflow` bucket exists in SQL for Jonathan's later work; this
-  branch does not run an MLflow server
+- `weather-mlops-mlflow` bucket exists in SQL for model artifacts. The tracking
+  server is local Compose for now (`make mlflow`); the bucket is not wired yet.
 
 ## CI
 
 On pushes and pull requests to `master` / `main`:
 
 - Host: `uv sync --locked --all-groups`, ruff, pytest
-- Docker: build gateway/streamlit/test images, then
+- Docker: build gateway/streamlit/test/mlflow images, then
   `docker compose --profile test run --rm test`
 

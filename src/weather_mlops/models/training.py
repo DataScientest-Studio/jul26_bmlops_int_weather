@@ -14,6 +14,7 @@ from weather_mlops.data.catalog import current_git_commit
 from weather_mlops.data.manifest import verify_processed_manifest
 from weather_mlops.data.preprocess import TARGET_COLUMN, build_preprocessor
 from weather_mlops.models.evaluation import evaluate_classifier
+from weather_mlops.models.tracking import log_training_run
 
 _TRAIN_LOCK = threading.Lock()
 
@@ -167,6 +168,21 @@ def _train_model_unlocked(
 
     print(f"\nModel saved to: {model_output_path}")
     print(f"Training metrics saved to: {metrics_output_path}")
+
+    log_training_run(
+        pipeline=pipeline,
+        metrics=metrics,
+        manifest=manifest,
+        n_estimators=n_estimators,
+        max_depth=max_depth,
+        learning_rate=learning_rate,
+        subsample=subsample,
+        colsample_bytree=colsample_bytree,
+        train_rows=len(X_train),
+        scale_pos_weight=scale_pos_weight,
+        negative_count=negative_count,
+        positive_count=positive_count,
+    )
 
     return pipeline, metrics
 

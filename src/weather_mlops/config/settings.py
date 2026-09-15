@@ -30,6 +30,7 @@ class Settings(BaseSettings):
         PROJECT_ROOT / "data" / "predictions" / "sample_prediction.json"
     )
     model_path: Path = PROJECT_ROOT / "models" / "rain_classifier.joblib"
+    best_model_path: Path = PROJECT_ROOT / "models" / "best_model.joblib"
     dataset_metadata_path: Path = PROJECT_ROOT / "data" / "metadata" / "weatherAUS.json"
     train_metrics_path: Path = PROJECT_ROOT / "reports" / "metrics" / "train.json"
     validation_metrics_path: Path = PROJECT_ROOT / "reports" / "metrics" / "validation.json"
@@ -60,6 +61,13 @@ class Settings(BaseSettings):
     random_state: int = 42
     train_fraction: float = 0.7
     validation_fraction: float = 0.15
+
+    # MLflow. Unset = skip tracking. Compose sets http://mlflow:8080 on the API.
+    mlflow_tracking_uri: str | None = None
+    mlflow_experiment_name: str = "weather-rainfall-classifier"
+    mlflow_model_name: str = "weather-rainfall-classifier"
+    mlflow_primary_metric: str = "validation_f1"
+    mlflow_run_metadata_path: Path = PROJECT_ROOT / "reports" / "mlflow_run.json"
 
 
 settings = Settings()

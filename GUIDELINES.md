@@ -94,9 +94,8 @@ the most recent period, so we are always predicting forward in time).
 ### Phase 2: Microservices, Tracking & Versioning — Deadline: Sep 20
 
 - Set up experiment tracking with **MLflow**: // Jonathan
-  - Add MLflow logging to the training script.
-  - Implement data and model versioning using the MLflow Model Registry.
-  - Compare performance after each run and tag the best model in MLflow.
+  - ✅ Tracking server in Compose (`make mlflow`, `127.0.0.1:8080`). `/train` logs params (sha256, git commit) and registers a candidate when the server is up. Comparison copies a winner to `best_model.joblib` (`make compare`). // integrated 2026-09-15
+  - OPEN: persist artifacts in `weather-mlops-mlflow`, serve the tagged best model from the API, init containers.
   - At the end of the training script (or later via Airflow), load the previous version and compare it with the newly trained model.
 - ✅ Split the application into Docker-based microservices with simple orchestration using `docker-compose`. // Gabriel — DONE 2026-09-09; jobs `ingestion` + `preprocess`, long-running `api`. This PR: profiles `gateway` (Nginx), `streamlit`, `test`.
   - ✅ Training removed from container startup and from the Makefile — the model is trained only via `POST /train`. // Gabriel — DONE 2026-09-10, agreed in the Sep 10 internal meeting
@@ -272,4 +271,4 @@ Suggestion from Nicolas: https://github.com/minio/minio as local S3 bucket.
 
 **Still open for Ziad:** Evidently drift (Phase 3). Live TLS/429 tests. MLflow init containers with Jonathan.
 
-**Waiting on others:** MLflow (Jonathan), Airflow (Thomas), Prometheus/Grafana (Thomas), wiki (Gabriel).
+**Waiting on others:** MLflow artifacts bucket + serving best model (Jonathan, now unblocked). Airflow (Thomas), Prometheus/Grafana (Thomas), wiki (Gabriel).

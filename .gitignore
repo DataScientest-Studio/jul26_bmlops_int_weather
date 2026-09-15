@@ -116,3 +116,7 @@ supabase/.temp/
 docker/nginx/certs/
 
 .streamlit/secrets.toml
+
+# Local MLflow tracking store (sqlite + artifacts).
+/mlflow-data/
+/reports/mlflow_run.json

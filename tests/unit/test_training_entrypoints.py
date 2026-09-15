@@ -23,6 +23,7 @@ def test_makefile_runtime_uses_compose():
     assert "--profile test run --rm --build test" in makefile
     assert "API_URL ?= http://api:8000" in makefile
     assert "\ndvc-pull:" in makefile
+    assert "\nmlflow:" in makefile
     assert "\nstreamlit:" in makefile
     assert "\npipeline:" in makefile
     assert "\ncheck:" not in makefile

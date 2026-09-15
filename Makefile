@@ -15,8 +15,8 @@ GIT_COMMIT ?= $(GIT_SHA)$(GIT_DIRTY)
 export GIT_COMMIT
 
 .PHONY: dvc-check-env dvc-config dvc-pull dvc-push dvc-repro dvc-add-model dvc-commit \
-	build up api gateway streamlit down logs test pipeline \
-	train validate evaluate predict fetch-open-meteo merge-raw preprocess \
+	build up api gateway streamlit mlflow down logs test pipeline \
+	train validate evaluate compare predict fetch-open-meteo merge-raw preprocess \
 	load-db register-dataset
 
 # --- DVC stays on the host (Git pointers + local cache). Everything else is Compose. ---
@@ -47,7 +47,7 @@ dvc-commit:
 # --- Compose: long-running services detach; jobs run and exit. ---
 
 build:
-	$(COMPOSE) --profile gateway --profile streamlit --profile test build
+	$(COMPOSE) --profile gateway --profile streamlit --profile test --profile mlflow build
 
 up:
 	$(COMPOSE) up -d --build
@@ -62,8 +62,11 @@ streamlit:
 	$(COMPOSE) up -d --build --no-deps api
 	$(LOCAL_ENV) uv run python scripts/with_vault_env.py $(COMPOSE) --profile streamlit up -d --build --no-deps streamlit
 
+mlflow:
+	$(COMPOSE) --profile mlflow up -d --build mlflow
+
 down:
-	$(COMPOSE) --profile gateway --profile streamlit --profile test down --remove-orphans
+	$(COMPOSE) --profile gateway --profile streamlit --profile test --profile mlflow down --remove-orphans
 
 logs:
 	$(COMPOSE) logs -f $(SERVICE)
@@ -75,6 +78,9 @@ pipeline: api
 	$(MAKE) train
 	$(MAKE) validate
 	$(MAKE) evaluate
+
+compare:
+	$(COMPOSE) run --rm --no-deps --entrypoint python api -m weather_mlops.models.comparison
 
 train:
 	$(COMPOSE) run --rm --no-deps -e API_URL="$(API_URL)" -e TRAIN_PARAMS='$(TRAIN_PARAMS)' --entrypoint python api scripts/train_via_api.py
