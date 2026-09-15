@@ -61,8 +61,13 @@ preprocess:
 
 # asks the running api to retrain. change the settings with, for example:
 #   make train TRAIN_PARAMS='{"n_estimators": 400, "max_depth": 6}'
+# API_AUTH_USER / API_AUTH_PASSWORD come from .env.
 train:
-	curl --fail --silent --show-error -X POST "$(API_URL)/train" -H "Content-Type: application/json" -d '$(TRAIN_PARAMS)'
+	@test -n "$(API_AUTH_USER)" || (echo "Missing API_AUTH_USER in .env"; exit 1)
+	@test -n "$(API_AUTH_PASSWORD)" || (echo "Missing API_AUTH_PASSWORD in .env"; exit 1)
+	curl --fail --silent --show-error -X POST "$(API_URL)/train" \
+		-u "$(API_AUTH_USER):$(API_AUTH_PASSWORD)" \
+		-H "Content-Type: application/json" -d '$(TRAIN_PARAMS)'
 
 validate:
 	$(LOCAL_ENV) uv run python -m weather_mlops.models.evaluation --x-data data/processed/X_validation.csv --y-data data/processed/y_validation.csv --metrics-output reports/metrics/validation.json --split-name validation

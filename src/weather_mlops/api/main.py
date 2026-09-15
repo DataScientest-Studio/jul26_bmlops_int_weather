@@ -1,9 +1,11 @@
 import difflib
+import os
 from datetime import date
 from functools import lru_cache
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from weather_mlops.config.settings import settings
@@ -184,6 +186,50 @@ class TrainOutput(BaseModel):
     roc_auc: float
 
 
+# Basic auth + a simple in-process rate limit.
+# The API was open to anyone on the network, which is fine for a local demo but
+# unsafe once the Streamlit app, MLflow, or any external service calls it.
+#
+# We use HTTPBasic because it is one of the things the FastAPI module shows in
+# the course, and it matches what the team is supposed to demo in the defense:
+# the request needs a username and a password, otherwise it gets 401.
+basic_security = HTTPBasic(auto_error=False)
+# Basic auth check for /predict, /predict/live_data and /train.
+# /health is left open so docker compose can healthcheck the container.
+basic_security = HTTPBasic(auto_error=False)
+
+
+def require_auth(credentials: HTTPBasicCredentials | None = Depends(basic_security)) -> None:  # noqa: B008
+    """Reject the request when the basic auth header is missing or wrong.
+
+    FastAPI passes the parsed credentials through Depends. We read
+    API_AUTH_USER / API_AUTH_PASSWORD from the environment at request time so
+    a missing or empty value is treated as misconfiguration (503) and the test
+    suite can change them with monkeypatch.
+    """
+    expected_user = os.environ.get("API_AUTH_USER")
+    expected_password = os.environ.get("API_AUTH_PASSWORD")
+    if not expected_user or not expected_password:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="API authentication is not configured. Contact the operator.",
+        )
+
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required.",
+            headers={"WWW-Authenticate": 'Basic realm="weather-mlops"'},
+        )
+
+    if credentials.username != expected_user or credentials.password != expected_password:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Wrong username or password.",
+            headers={"WWW-Authenticate": 'Basic realm="weather-mlops"'},
+        )
+
+
 app = FastAPI()
 
 
@@ -195,6 +241,8 @@ def health_check():
     This is used mostly by orchestration tools to verify
     the service is ready before routing traffic to it.
     A missing model means /predict will fail until /train has been called
+
+    /health is intentionally open so docker compose can call it without creds.
     """
     if settings.model_path.exists():
         model_status = "A pretrained model is already loaded"
@@ -205,7 +253,10 @@ def health_check():
 
 
 @app.post("/predict", response_model=PredictionOutput)
-def predict_endpoint(features: PredictionInput):
+def predict_endpoint(
+    features: PredictionInput,
+    _: None = Depends(require_auth),
+):
     """
     Predict whether it will rain tomorrow at the given location.
 
@@ -221,7 +272,10 @@ def predict_endpoint(features: PredictionInput):
 
 
 @app.post("/train", response_model=TrainOutput)
-def train_endpoint(features: TrainInput):
+def train_endpoint(
+    features: TrainInput,
+    _: None = Depends(require_auth),
+):
     """
     Train a new rainfall classifier and return its evaluation metrics.
 
@@ -239,7 +293,10 @@ def train_endpoint(features: TrainInput):
 
 
 @app.post("/predict/live_data", response_model=PredictionOutput)
-def predict_live_endpoint(features: LivePredictionInput):
+def predict_live_endpoint(
+    features: LivePredictionInput,
+    _: None = Depends(require_auth),
+):
     """
     Predict tomorrow's rain using today's live weather from Open-Meteo.
 
