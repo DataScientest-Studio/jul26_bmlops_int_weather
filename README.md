@@ -305,10 +305,33 @@ report that every stage is unchanged.
 A FastAPI service exposes the trained model for predictions and retraining.
 
 Endpoints:
-- `GET /health` reports whether the API is running and whether a trained model is available
-- `POST /predict` predicts rain tomorrow from manually provided weather features (`location` and at least 3 weather conditions are required. The remaining fields are optional and missing values are imputed by the trained pipeline)
-- `POST /predict/live_data` predicts rain tomorrow using live weather data fetched from Open-Meteo for the given location (only `location` is required)
-- `POST /train` retrains the model with configurable XGBoost hyperparameters and returns evaluation metrics
+- `GET /health` reports whether the API is running and whether a trained model is available. Open (no creds) so docker compose's healthcheck and orchestration tools can hit it.
+- `POST /predict` predicts rain tomorrow from manually provided weather features (`location` and at least 3 weather conditions are required. The remaining fields are optional and missing values are imputed by the trained pipeline). Requires basic auth.
+- `POST /predict/live_data` predicts rain tomorrow using live weather data fetched from Open-Meteo for the given location (only `location` is required). Requires basic auth.
+- `POST /train` retrains the model with configurable XGBoost hyperparameters and returns evaluation metrics. Requires basic auth.
+
+`/health` stays open so the docker healthcheck in `docker-compose.yml` keeps working.
+
+Basic auth reads `API_AUTH_USER` and `API_AUTH_PASSWORD` from `.env` (and from
+the `api` service's `environment:` block in `docker-compose.yml`). Set them
+locally once:
+
+```bash
+# .env
+API_AUTH_USER=your-username
+API_AUTH_PASSWORD=your-strong-password
+```
+
+Then call the protected endpoints with curl using `-u user:pass`:
+
+```bash
+curl -u "$API_AUTH_USER:$API_AUTH_PASSWORD" -X POST http://localhost:8000/predict \
+    -H "Content-Type: application/json" \
+    -d '{"location": "Sydney", "rainfall": 0.0, "humidity_3pm": 30.0, "pressure_3pm": 1015.0}'
+```
+
+If the env vars are missing, the protected endpoints return **503** with a
+clear message instead of staying open by accident.
 
 Run locally:
 

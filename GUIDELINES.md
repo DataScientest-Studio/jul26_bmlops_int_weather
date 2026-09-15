@@ -109,6 +109,8 @@ the most recent period, so we are always predicting forward in time).
   - ✅ `ci.yaml` (always): Linter + Unit tests + Build Docker images. // Gabriel — DONE 2026-09-10
   - ✅ `release.yaml` (only on master): builds and pushes the three images to the **GitHub Container Registry** (`ghcr.io`) instead of Docker Hub — approved by Nicolas on Slack 2026-09-10. // Gabriel — DONE 2026-09-10
 - **(OPTIONAL)** Optimize and secure the API (basic auth or OAuth2). // Gabriel + Ziad = [NGINX] - Sprint 1 API security module - review the slides from master class - check optional course
+  - Basic auth added on `/predict`, `/predict/live_data`, `/train`. `/health` stays open for the docker healthcheck. Configured through `API_AUTH_USER` / `API_AUTH_PASSWORD` in `.env`. // Gabriel
+  - TODO: NGINX layer (reverse proxy, IP filtering) — separate workstream.
 - **(OPTIONAL)** Implement scalability with Kubernetes. // Thomas
 
 ### Phase 3: Monitoring & Maintenance — Deadline: Oct 2
