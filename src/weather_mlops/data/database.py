@@ -99,7 +99,7 @@ def _existing_dataset_row(client: Client, dataset_name: str, sha256: str) -> dic
         client.table(settings.supabase_dataset_versions_table)
         .select(
             "storage_uri,created_at,git_commit,preprocessing_version,"
-            "parent_sha256,created_by,source,version_kind"
+            "parent_sha256,created_by,source,version_kind,path,size_bytes,md5"
         )
         .eq("dataset_name", dataset_name)
         .eq("sha256", sha256)
@@ -116,8 +116,10 @@ def store_dataset_metadata(
 ) -> None:
     """Upsert catalog identity. Never replace a stored URI with null.
 
-    Repeat loads keep the original created_at and fill only blank lineage
-    fields. Snapshot registration remains the source of storage_uri.
+    Repeat loads keep the original created_at, path, size_bytes, md5, and fill
+    only blank lineage fields. Conflicting git_commit, parent_sha256,
+    preprocessing_version, storage_uri, or version_kind for the same sha256 is
+    rejected so identical CSVs cannot rewrite snapshot lineage.
     """
 
     supabase = client or get_supabase_client()
@@ -140,16 +142,30 @@ def store_dataset_metadata(
     if existing:
         if existing.get("created_at"):
             payload["created_at"] = existing["created_at"]
-        for field in (
+        locked = (
             "storage_uri",
             "git_commit",
             "preprocessing_version",
             "parent_sha256",
-            "created_by",
-            "source",
             "version_kind",
-        ):
+        )
+        for field in locked:
+            existing_value = existing.get(field)
+            new_value = payload.get(field)
+            if existing_value and new_value and existing_value != new_value:
+                raise ValueError(
+                    f"Catalog lineage conflict for {metadata.dataset_name} "
+                    f"{metadata.sha256}: {field} is {existing_value!r} but "
+                    f"registration has {new_value!r}. Identical CSVs keep the "
+                    "original snapshot lineage."
+                )
+            if not payload.get(field) and existing_value:
+                payload[field] = existing_value
+        for field in ("created_by", "source"):
             if not payload.get(field) and existing.get(field):
+                payload[field] = existing[field]
+        for field in ("path", "size_bytes", "md5"):
+            if existing.get(field) not in (None, ""):
                 payload[field] = existing[field]
 
     supabase.table(settings.supabase_dataset_versions_table).upsert(

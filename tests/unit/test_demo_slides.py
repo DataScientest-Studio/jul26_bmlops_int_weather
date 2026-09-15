@@ -20,3 +20,4 @@ def test_live_slide_does_not_mention_service_role_usage() -> None:
     live = SLIDES[slide_index("live")]
 
     assert any("SUPABASE_KEY" in note for note in live.notes)
+    assert any("Nginx" in note for note in live.notes)

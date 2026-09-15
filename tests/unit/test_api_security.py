@@ -7,7 +7,18 @@ from weather_mlops.api.main import app
 
 GOOD_USER = "weather"
 GOOD_PASS = "supersecret"
-PREDICT_METRICS = {"rain_tomorrow": False, "probability": 0.12}
+PREDICT_METRICS = {
+    "rain_tomorrow": False,
+    "probability": 0.12,
+    "model": {
+        "name": "weather-rainfall-classifier",
+        "alias": "champion",
+        "version": "3",
+        "source": "models:/weather-rainfall-classifier@champion",
+        "dataset_sha256": "abc",
+        "git_commit": "deadbeef",
+    },
+}
 TRAIN_METRICS = {
     "accuracy": 0.8,
     "precision": 0.8,
@@ -45,6 +56,7 @@ def test_health_is_open_without_auth(client):
     assert response.status_code == 200
     assert response.json()["status"] == "This API is running"
     assert response.json()["auth_configured"] is True
+    assert "model" in response.json()
 
 
 def test_predict_rejects_missing_credentials(client):
@@ -73,6 +85,8 @@ def test_predict_passes_auth_when_credentials_match(client):
 
     assert response.status_code == 200
     assert response.json()["rain_tomorrow"] is False
+    assert response.json()["model"]["alias"] == "champion"
+    assert response.json()["model"]["version"] == "3"
 
 
 def test_train_rejects_missing_credentials(client):

@@ -6,7 +6,7 @@ serves the model. Nginx is the public edge. Streamlit is the short live demo.
 
 The app runtime is **Docker Compose**. DVC stays on the host because it writes
 Git-tracked pointers and a local cache. MLflow tracking is an opt-in Compose
-profile (`make mlflow`). Airflow is not in this branch.
+profile (`make mlflow`, also started by `make up`). Airflow is not in this branch.
 
 ## What it does
 
@@ -14,23 +14,23 @@ profile (`make mlflow`). Airflow is not in this branch.
 | --- | --- |
 | FastAPI | `/health`, `/predict`, `/predict/live_data`, `/train` |
 | HTTP Basic Auth | Protects predict and train. `/health` stays open. |
-| Nginx (`make gateway`) | TLS, HTTP→HTTPS, per-IP rate limits |
-| Streamlit (`make streamlit`) | Three-screen deck that calls the API with the same basic auth |
+| Nginx (`make api` / `make up`) | Public TLS edge. The API is not published on the host. |
+| Streamlit (`make streamlit`) | Three-screen deck that calls Nginx with the same basic auth |
 | Supabase Vault | Stores S3 keys and API basic auth. Hydrated from `SUPABASE_URL` + `SUPABASE_KEY` |
 | `dataset_versions` | Production lineage: sha256 identity, snapshot URI, git commit |
 | DVC (`no_scm`) | Developer restore (`make dvc-pull`). Not the production catalog. |
-| MLflow (`make mlflow`) | Tracking + registry on `127.0.0.1:8080`. `/train` logs when the server is up. |
+| MLflow (`make up` / `make mlflow`) | Tracking + registry. Artifacts in `s3://weather-mlops-mlflow`. API serves the `champion` alias. |
 
 A typical call:
 
-1. Client sends `POST /predict` with `Authorization: Basic ...`.
-2. FastAPI checks `API_AUTH_USER` / `API_AUTH_PASSWORD` (from Vault, copied into
-   the process environment at startup).
-3. Wrong or missing credentials → **401**. Missing Vault auth secrets fail
+1. Client sends `POST https://localhost/predict` with `Authorization: Basic ...`
+   (Nginx).
+2. Nginx applies per-IP rate limits, then proxies to FastAPI on the Compose network.
+3. FastAPI checks `API_AUTH_USER` / `API_AUTH_PASSWORD` (from Vault).
+4. Wrong or missing credentials → **401**. Missing Vault auth secrets fail
    startup (or **503** if they disappear after the process is already up).
-4. Valid request → the joblib pipeline. Missing model → **404**.
-5. If you put Nginx in front, rate limits hit **before** FastAPI. `/train` is
-   tighter than predict.
+5. Valid request → the `champion` model from MLflow, or `best_model.joblib`.
+   Missing model → **404**. `/train` is rate-limited tighter than predict.
 
 Streamlit never receives `SUPABASE_KEY`. `make streamlit` hydrates basic auth
 from Vault on the host and passes only that pair into the Streamlit container.
@@ -44,8 +44,8 @@ Long-running services (API, Nginx, Streamlit) start detached. Follow them with
 | You want | Command |
 | --- | --- |
 | Restore the shared baseline | `make dvc-config && make dvc-pull && make api` |
-| Refresh Open-Meteo, rebuild splits, serve | `make up` |
-| Tests (ruff + pytest in `weather-test`) | `make test` |
+| Refresh Open-Meteo, rebuild splits, serve over HTTPS | `make up` |
+| Tests (ruff + pytest, including live Nginx) | `make test` |
 | Retrain, then held-out metrics | `make pipeline` |
 | Public HTTPS + rate limits | `make gateway` |
 | Streamlit on `127.0.0.1:8501` | `make streamlit` |
@@ -96,9 +96,9 @@ container. Other compose commands use empty defaults so they do not warn.
 `make dvc-config` writes S3 keys in plaintext to ignored `.dvc/config.local`.
 Keep that file local and restrictive (`chmod 600`).
 
-The API port is localhost-only (`127.0.0.1:8000`). Public access goes through
-Nginx. If Vault has no `API_AUTH_USER` / `API_AUTH_PASSWORD` yet, the API
-process will not start.
+The public URL is Nginx (`https://127.0.0.1`, self-signed). The API is not
+published on the host. If Vault has no `API_AUTH_USER` / `API_AUTH_PASSWORD`
+yet, the API process will not start.
 
 ## Workflows
 
@@ -110,9 +110,9 @@ Teammates should restore artifacts, not rebuild them:
 cp .env.example .env          # SUPABASE_URL + SUPABASE_KEY only
 make dvc-config
 make dvc-pull
-make test                     # ruff + pytest in the test container
-make api                      # API only, detached on 127.0.0.1:8000
-curl http://127.0.0.1:8000/health
+make test                     # ruff + pytest, including live Nginx through the gateway
+make api                      # API + Nginx, detached
+curl -k https://127.0.0.1/health
 ```
 
 `make dvc-pull` downloads the DVC-versioned raw data, processed splits,
@@ -121,8 +121,8 @@ the shared baseline.
 
 ### Refresh data (optional)
 
-`make up` runs the ingestion job, then preprocess, then the API. The two jobs
-exit when they finish. Pin the fetch date with `OPEN_METEO_DATE=YYYY-MM-DD`.
+`make up` runs MLflow, then ingestion, preprocess, the API, and Nginx. The two
+jobs exit when they finish. Pin the fetch date with `OPEN_METEO_DATE=YYYY-MM-DD`.
 
 ```bash
 make up
@@ -136,13 +136,17 @@ Docker jobs). Use it when publishing lock hashes, not as the daily runtime.
 ### Train and evaluate
 
 ```bash
-make api                      # if it is not already up
-make pipeline                 # POST /train, then validation, then test metrics
+make up                       # MLflow + ingestion → preprocess → API + Nginx
+make api                      # if the splits already exist: MLflow + API + Nginx
+make pipeline                 # train → validate → compare (champion) → evaluate
 ```
 
-`/train` returns training-set metrics. Held-out numbers come from validate and
-evaluate. The individual steps are still `make train`, `make validate`,
-`make evaluate` if you want them one at a time.
+`/train` returns training-set metrics and, when MLflow is up, registers a
+candidate with dataset sha256 and git commit. `make compare` keeps the
+`champion` alias on the best `validation_roc_auc` that also meets recall ≥ 0.75,
+and copies that joblib to `best_model.joblib`. The API loads that alias first.
+Held-out numbers come from validate and evaluate. The individual steps are
+still `make train`, `make validate`, `make compare`, `make evaluate`.
 
 ### Publish a new baseline
 
@@ -163,8 +167,12 @@ and `models/` with `make dvc-pull`.
 
 ### Nginx gateway
 
+`make up` and `make api` start Nginx in front of the API. There is no host
+port on the API itself.
+
 ```bash
-make gateway
+make api
+make test-gateway
 ```
 
 - Port 80 redirects to HTTPS.
@@ -175,6 +183,7 @@ make gateway
 - `/docs` and `/redoc` use a looser CSP so Swagger UI can load.
 
 Basic auth is still checked by FastAPI behind Nginx. Nginx does not replace it.
+MLflow stays on `127.0.0.1:8080` and is **not** routed through Nginx.
 
 ### Streamlit
 
@@ -183,8 +192,8 @@ make streamlit
 ```
 
 Then open `http://127.0.0.1:8501`. Three screens: architecture, stores, live
-predict. The live screen calls `/health` (open) and `/predict/live_data`
-(basic auth hydrated from Vault by `make streamlit`).
+predict. The live screen calls Nginx (`https://nginx`), which proxies `/health`
+and `/predict/live_data`.
 
 ### Dataset catalog
 
@@ -208,15 +217,15 @@ SQL editor before the next `make load-db` on that project.
 
 | Method | Path | Auth | Notes |
 | --- | --- | --- | --- |
-| `GET` | `/health` | none | Docker healthcheck uses this |
-| `POST` | `/predict` | basic | location + at least 3 weather fields |
+| `GET` | `/health` | none | Docker healthcheck. Body includes the serving `model` (champion alias + version) |
+| `POST` | `/predict` | basic | location + at least 3 weather fields. Response includes the same `model` object |
 | `POST` | `/predict/live_data` | basic | location only; fetches Open-Meteo |
 | `POST` | `/train` | basic | retrains, writes `models/rain_classifier.joblib` |
 
 Compose injects `SUPABASE_URL` and `SUPABASE_KEY` into the API container. The
 API hydrates `API_AUTH_USER` / `API_AUTH_PASSWORD` from Vault. The Streamlit
 container gets the auth pair (via `make streamlit`) and
-`DEMO_API_URL=http://api:8000`. It does **not** get `SUPABASE_KEY`.
+`DEMO_API_URL=https://nginx`. It does **not** get `SUPABASE_KEY`.
 
 ## Repository layout
 
@@ -305,14 +314,13 @@ Shared project schema is in `supabase/schema.sql` and
 - `ingestion_batches`
 - private bucket `weather-mlops-dvc`
 - Vault RPC `public.get_app_secret` — reads S3 keys and API basic auth at startup
-- `weather-mlops-mlflow` bucket exists in SQL for model artifacts. The tracking
-  server is local Compose for now (`make mlflow`); the bucket is not wired yet.
+- `weather-mlops-mlflow` private bucket — MLflow model artifacts (joblib, sklearn
+  flavor, lineage.json). Tracking metadata stays in the MLflow sqlite volume.
 
 ## CI
 
 On pushes and pull requests to `master` / `main`:
 
 - Host: `uv sync --locked --all-groups`, ruff, pytest
-- Docker: build gateway/streamlit/test/mlflow images, then
-  `docker compose --profile test run --rm test`
+- Docker: build images, start API + Nginx, run `make test` (unit + live TLS/429)
 

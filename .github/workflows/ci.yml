@@ -32,7 +32,7 @@ jobs:
         run: uv run ruff format --check .
 
       - name: Run tests
-        run: uv run pytest
+        run: uv run pytest -m "not gateway"
 
   # builds the three images so a broken Dockerfile is caught here, not on a laptop
   docker:
@@ -45,5 +45,11 @@ jobs:
       - name: Build the images
         run: docker compose --profile gateway --profile streamlit --profile test --profile mlflow build
 
-      - name: Run lint and tests in the test image
-        run: docker compose --profile test run --rm test
+      - name: Run lint, unit tests, and live nginx checks
+        env:
+          API_AUTH_USER: ci
+          API_AUTH_PASSWORD: ci
+        run: |
+          docker compose up -d --build --no-deps api
+          docker compose --profile gateway up -d --build --no-deps nginx
+          docker compose --profile test run --rm -e GATEWAY_URL=https://nginx test

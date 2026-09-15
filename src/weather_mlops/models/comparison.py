@@ -1,188 +1,200 @@
+"""Promote a candidate to champion when it beats the current best on ROC-AUC."""
+
+from __future__ import annotations
+
 import json
 import shutil
+from pathlib import Path
+from typing import Any
+
+from mlflow.exceptions import MlflowException
+from mlflow.tracking import MlflowClient
 
 from weather_mlops.config.settings import settings
+from weather_mlops.data.manifest import verify_processed_manifest
+from weather_mlops.data.versioning import hash_file
 from weather_mlops.models.tracking import load_mlflow_run_metadata
 
-PRIMARY_METRIC = settings.mlflow_primary_metric
+
+def _load_payload(path: Path) -> dict[str, Any]:
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
-def load_validation_metrics() -> dict[str, float]:
-    metrics_path = settings.validation_metrics_path
-    raw_metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
-    return {
-        key: float(value) for key, value in raw_metrics.items() if isinstance(value, (int, float))
-    }
+def _numeric_metrics(payload: dict[str, Any]) -> dict[str, float]:
+    return {key: float(value) for key, value in payload.items() if isinstance(value, (int, float))}
 
 
-def get_registered_model_version(client, model_name: str, version: str):
-    try:
-        return client.get_model_version(name=model_name, version=version)
-    except Exception as exc:
-        raise RuntimeError(f"Could not retrieve model {model_name} version {version}.") from exc
+def _recall(metrics: dict[str, float]) -> float:
+    return float(metrics.get(settings.mlflow_recall_metric, 0.0))
 
 
-def get_best_model_version(client, model_name: str):
-    versions = client.search_model_versions(filter_string=f"name = '{model_name}'")
-    best_versions = [version for version in versions if version.tags.get("status") == "best"]
-    if not best_versions:
-        return None
-    if len(best_versions) > 1:
-        raise RuntimeError(
-            f"More than one version of {model_name} is tagged as best: "
-            + ", ".join(str(version.version) for version in best_versions)
-        )
-    return best_versions[0]
+def _primary(metrics: dict[str, float]) -> float:
+    return float(metrics.get(settings.mlflow_primary_metric, 0.0))
 
 
-def get_run_metric(client, run_id: str, metric_name: str) -> float:
-    run = client.get_run(run_id)
-    if metric_name not in run.data.metrics:
-        raise RuntimeError(f"Metric '{metric_name}' is not available in MLflow run {run_id}.")
-    return float(run.data.metrics[metric_name])
+def meets_promotion_guardrails(metrics: dict[str, float]) -> bool:
+    return _recall(metrics) >= settings.mlflow_min_recall
 
 
-def tag_model_version(client, model_name: str, version: str, status: str) -> None:
-    client.set_model_version_tag(
-        name=model_name,
-        version=version,
-        key="status",
-        value=status,
-    )
-
-
-def promote_to_best(model_source_path=None) -> None:
-    source = model_source_path or settings.model_path
+def _copy_champion_joblib(model_source_path: Path) -> None:
+    source = Path(model_source_path)
+    if not source.exists():
+        raise FileNotFoundError(f"No trained model at {source}. Train first.")
     settings.best_model_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(source, settings.best_model_path)
 
 
-def clear_existing_best_tags(client, model_name: str, except_version: str) -> None:
-    versions = client.search_model_versions(filter_string=f"name = '{model_name}'")
-    for version in versions:
-        if str(version.version) != str(except_version) and version.tags.get("status") == "best":
-            tag_model_version(
-                client=client,
-                model_name=model_name,
-                version=str(version.version),
-                status="previous_best",
+def _is_missing_champion_alias(exc: BaseException) -> bool:
+    """SQLite registries report a missing alias as INVALID_PARAMETER_VALUE."""
+    if not isinstance(exc, MlflowException):
+        return False
+    if exc.error_code == "RESOURCE_DOES_NOT_EXIST":
+        return True
+    message = str(exc).lower()
+    return (
+        exc.error_code == "INVALID_PARAMETER_VALUE"
+        and "alias" in message
+        and "not found" in message
+    )
+
+
+def _current_dataset_sha256() -> str | None:
+    manifest_path = settings.processed_manifest_path
+    if not manifest_path.exists():
+        return None
+    stored = verify_processed_manifest(manifest_path.parent)
+    return str(stored["sha256"])
+
+
+def _require_matching_run(model_source_path: Path) -> dict:
+    metadata = load_mlflow_run_metadata()
+    expected = metadata.get("model_sha256")
+    actual = hash_file(Path(model_source_path), "sha256")
+    if expected and expected != actual:
+        raise RuntimeError(
+            "mlflow_run.json does not match the current joblib. "
+            "Retrain with MLflow reachable so validation cannot attach to an old run."
+        )
+    return metadata
+
+
+def _require_matching_evaluation(
+    payload: dict[str, Any],
+    model_source_path: Path,
+    run_metadata: dict[str, Any],
+) -> None:
+    recorded_model = payload.get("model_sha256")
+    actual_model = hash_file(Path(model_source_path), "sha256")
+    if not recorded_model:
+        raise RuntimeError("validation.json has no model_sha256. Re-run make validate.")
+    if recorded_model != actual_model:
+        raise RuntimeError(
+            "validation.json was not produced for the current joblib. Re-run make validate."
+        )
+    recorded_run = payload.get("run_id")
+    if recorded_run and recorded_run != run_metadata.get("run_id"):
+        raise RuntimeError(
+            "validation.json belongs to a different MLflow run. Re-run make validate."
+        )
+    recorded_dataset = payload.get("dataset_sha256")
+    if recorded_dataset:
+        current_dataset = _current_dataset_sha256()
+        if not current_dataset:
+            raise RuntimeError("Processed dataset cannot be verified. Re-run make validate.")
+        if recorded_dataset != current_dataset:
+            raise RuntimeError(
+                "validation.json was not produced for the current dataset. Re-run make validate."
             )
 
 
-def compare_models() -> None:
-    import mlflow
+def _load_champion(client: MlflowClient):
+    try:
+        return client.get_model_version_by_alias(
+            settings.mlflow_model_name,
+            settings.mlflow_champion_alias,
+        )
+    except MlflowException as exc:
+        if _is_missing_champion_alias(exc):
+            return None
+        raise
 
+
+def compare_models(
+    metrics_path: Path | None = None,
+    model_source_path: Path | None = None,
+) -> dict:
+    """Keep champion unless the candidate has higher ROC-AUC and recall ≥ 0.75."""
+    metrics_path = Path(metrics_path or settings.validation_metrics_path)
+    model_source_path = Path(model_source_path or settings.model_path)
+    if not metrics_path.exists():
+        raise FileNotFoundError(f"No validation metrics at {metrics_path}. Validate first.")
     if not settings.mlflow_tracking_uri:
-        raise RuntimeError("MLFLOW_TRACKING_URI is not set. Start MLflow with `make mlflow`.")
+        raise RuntimeError("MLFLOW_TRACKING_URI is not set.")
+    if not model_source_path.exists():
+        raise FileNotFoundError(f"No trained model at {model_source_path}. Train first.")
 
-    mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
-    client = mlflow.MlflowClient()
-    run_metadata = load_mlflow_run_metadata()
-    run_id = run_metadata["run_id"]
-    model_name = run_metadata["model_name"]
-    new_version = str(run_metadata["model_version"])
+    run_metadata = _require_matching_run(model_source_path)
+    payload = _load_payload(metrics_path)
+    _require_matching_evaluation(payload, model_source_path, run_metadata)
+    metrics = _numeric_metrics(payload)
+    client = MlflowClient(tracking_uri=settings.mlflow_tracking_uri)
+    run = client.get_run(run_metadata["run_id"])
+    for name, value in metrics.items():
+        client.log_metric(run.info.run_id, name, value)
 
-    get_registered_model_version(client=client, model_name=model_name, version=new_version)
-    validation_metrics = load_validation_metrics()
-    metric_name = PRIMARY_METRIC
-    if metric_name not in validation_metrics:
-        raise RuntimeError(
-            f"Primary metric '{metric_name}' was not found in {settings.validation_metrics_path}."
+    candidate_score = _primary(metrics)
+    candidate_recall = _recall(metrics)
+    passed_guardrail = meets_promotion_guardrails(metrics)
+    current_best: float | None = None
+    champion = _load_champion(client)
+    if champion is not None:
+        champion_run = client.get_run(champion.run_id)
+        current_best = float(champion_run.data.metrics.get(settings.mlflow_primary_metric) or 0.0)
+
+    promote = passed_guardrail and (champion is None or candidate_score > current_best)
+    if promote:
+        client.set_registered_model_alias(
+            name=settings.mlflow_model_name,
+            alias=settings.mlflow_champion_alias,
+            version=run_metadata["model_version"],
         )
+        client.set_model_version_tag(
+            name=settings.mlflow_model_name,
+            version=run_metadata["model_version"],
+            key="stage",
+            value="champion",
+        )
+        _copy_champion_joblib(model_source_path)
+        decision = "promoted"
+    else:
+        client.set_model_version_tag(
+            name=settings.mlflow_model_name,
+            version=run_metadata["model_version"],
+            key="stage",
+            value="candidate",
+        )
+        if not passed_guardrail:
+            decision = "rejected_recall"
+        else:
+            decision = "kept_previous"
 
-    new_score = validation_metrics[metric_name]
-    print(f"New model: {model_name} v{new_version}")
-    print(f"Validation metric: {metric_name} = {new_score:.4f}")
-
-    validation_mlflow_metrics = {
-        key: value for key, value in validation_metrics.items() if key.startswith("validation_")
+    result = {
+        "run_id": run_metadata["run_id"],
+        "model_version": run_metadata["model_version"],
+        "metric": settings.mlflow_primary_metric,
+        "candidate_score": candidate_score,
+        "candidate_recall": candidate_recall,
+        "current_best": current_best,
+        "promoted": promote,
+        "decision": decision,
     }
-    for key, value in validation_mlflow_metrics.items():
-        client.log_metric(run_id=run_id, key=key, value=value)
-
-    current_best = get_best_model_version(client=client, model_name=model_name)
-    if current_best is None:
-        print(f"No existing best model found. Model v{new_version} becomes the best model.")
-        clear_existing_best_tags(
-            client=client,
-            model_name=model_name,
-            except_version=new_version,
-        )
-        tag_model_version(
-            client=client,
-            model_name=model_name,
-            version=new_version,
-            status="best",
-        )
-        promote_to_best()
-        return
-
-    if str(current_best.version) == new_version:
-        print(f"Model v{new_version} is already tagged as best. Nothing to compare.")
-        return
-
-    previous_best_score = get_run_metric(
-        client=client,
-        run_id=current_best.run_id,
-        metric_name=metric_name,
+    print(
+        f"Compare: {decision} "
+        f"({settings.mlflow_primary_metric}={candidate_score:.4f}, "
+        f"{settings.mlflow_recall_metric}={candidate_recall:.4f}, "
+        f"best={current_best})"
     )
-    print(f"Previous best: v{current_best.version}")
-    print(f"Previous {metric_name}: {previous_best_score:.4f}")
-
-    if new_score > previous_best_score:
-        print(f"New model v{new_version} is better. Promoting it to best.")
-        clear_existing_best_tags(
-            client=client,
-            model_name=model_name,
-            except_version=new_version,
-        )
-        tag_model_version(
-            client=client,
-            model_name=model_name,
-            version=new_version,
-            status="best",
-        )
-        tag_model_version(
-            client=client,
-            model_name=model_name,
-            version=str(current_best.version),
-            status="previous_best",
-        )
-        promote_to_best()
-        client.set_model_version_tag(
-            name=model_name,
-            version=new_version,
-            key="previous_best_version",
-            value=str(current_best.version),
-        )
-        client.set_model_version_tag(
-            name=model_name,
-            version=new_version,
-            key="previous_best_score",
-            value=f"{previous_best_score:.6f}",
-        )
-        print(f"Model v{new_version} is now the best model.")
-        return
-
-    print(f"New model v{new_version} is not better. Keeping v{current_best.version} as best.")
-    tag_model_version(
-        client=client,
-        model_name=model_name,
-        version=new_version,
-        status="candidate",
-    )
-    client.set_model_version_tag(
-        name=model_name,
-        version=new_version,
-        key="compared_against_version",
-        value=str(current_best.version),
-    )
-    client.set_model_version_tag(
-        name=model_name,
-        version=new_version,
-        key="compared_against_score",
-        value=f"{previous_best_score:.6f}",
-    )
+    return result
 
 
 def main() -> None:

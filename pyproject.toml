@@ -66,6 +66,14 @@ select = [
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-ra"
+filterwarnings = [
+    "ignore::starlette.exceptions.StarletteDeprecationWarning",
+    "ignore:The anyio.abc.BlockingPortal alias is deprecated:DeprecationWarning",
+    "ignore:Unverified HTTPS request is being made:urllib3.exceptions.InsecureRequestWarning",
+]
+markers = [
+    "gateway: live TLS/429 checks against a running nginx (make test-gateway)",
+]
 
 [tool.coverage.run]
 source = ["weather_mlops"]

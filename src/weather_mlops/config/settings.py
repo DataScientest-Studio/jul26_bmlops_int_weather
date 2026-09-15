@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     supabase_dataset_versions_table: str = "dataset_versions"
     supabase_ingestion_batches_table: str = "ingestion_batches"
     supabase_datasets_bucket: str = "weather-mlops-dvc"
+    supabase_mlflow_bucket: str = "weather-mlops-mlflow"
 
     # DVC remote backed by Supabase Storage's S3-compatible API.
     dvc_remote_name: str = "supabase"
@@ -66,7 +67,11 @@ class Settings(BaseSettings):
     mlflow_tracking_uri: str | None = None
     mlflow_experiment_name: str = "weather-rainfall-classifier"
     mlflow_model_name: str = "weather-rainfall-classifier"
-    mlflow_primary_metric: str = "validation_f1"
+    mlflow_primary_metric: str = "validation_roc_auc"
+    mlflow_recall_metric: str = "validation_recall"
+    mlflow_min_recall: float = 0.75
+    mlflow_champion_alias: str = "champion"
+    mlflow_artifact_destination: str = "s3://weather-mlops-mlflow"
     mlflow_run_metadata_path: Path = PROJECT_ROOT / "reports" / "mlflow_run.json"
 
 
