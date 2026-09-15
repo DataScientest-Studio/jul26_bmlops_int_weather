@@ -44,9 +44,7 @@ def post_train(url: str, user: str, password: str, payload: dict) -> str:
 
     if last_response is not None:
         print(last_response.text, file=sys.stderr)
-    raise SystemExit(
-        f"{url} returned 502 from Nginx. The API was not ready; retry `make train`."
-    )
+    raise SystemExit(f"{url} returned 502 from Nginx. The API was not ready; retry `make train`.")
 
 
 def main() -> None:
