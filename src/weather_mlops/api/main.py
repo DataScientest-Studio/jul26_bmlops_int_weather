@@ -58,7 +58,7 @@ def convert(x):
     """
 
     x = x.split("_")
-    res = "".join(word.capitalize() for word in x[0:])
+    res = "".join(word.capitalize() for word in x)
     return res
 
 

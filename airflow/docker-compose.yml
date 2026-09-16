@@ -1,0 +1,120 @@
+x-airflow-common: &airflow-common
+  image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:2.8.1}
+  environment: &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_ADMIN}:${POSTGRES_PW}@postgres/${POSTGRES_DB}
+    AIRFLOW__CORE__FERNET_KEY: ${FERNET_KEY}
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session"
+    HOST_PROJECT_PATH: ${PWD}/..
+    SUPABASE_URL: ${SUPABASE_URL}
+    SUPABASE_KEY: ${SUPABASE_KEY}
+
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./logs:/opt/airflow/logs
+    - ./plugins:/opt/airflow/plugins
+  user: "${AIRFLOW_UID:-50000}:${AIRFLOW_GID:-0}"
+  depends_on:
+    postgres:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: ${POSTGRES_ADMIN}
+      POSTGRES_PASSWORD: ${POSTGRES_PW}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres-db-volume:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_ADMIN}"]
+      interval: 5s
+      retries: 5
+    restart: always
+    networks:
+      - airflow_network
+
+  airflow-init:
+    <<: *airflow-common
+    command: version
+    environment:
+      <<: *airflow-common-env
+      _AIRFLOW_DB_MIGRATE: "true"
+      _AIRFLOW_WWW_USER_CREATE: "true"
+      _AIRFLOW_WWW_USER_USERNAME: ${AIRFLOW_ADMIN}
+      _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_PW}
+    networks:
+      - airflow_network
+
+  airflow-webserver:
+    <<: *airflow-common
+    command: webserver
+    ports:
+      - 127.0.0.1:8081:8080
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    restart: always
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    networks:
+      - airflow_network
+
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    environment:
+      <<: *airflow-common-env
+      DOCKER_HOST: tcp://docker-socket-proxy:2375
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'airflow jobs check --job-type SchedulerJob --hostname "$${HOSTNAME}"',
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    restart: always
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    networks:
+      - airflow_network
+      - weather_network
+
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      CONTAINERS: 1
+      POST: 1
+      EXEC: 0
+      VOLUMES: 0
+      NETWORKS: 0
+      IMAGES: 1
+    restart: always
+    networks:
+      - airflow_network
+
+volumes:
+  postgres-db-volume:
+
+networks:
+  airflow_network:
+    name: airflow_network
+  weather_network:
+    external: true
+    name: jul26_bmlops_int_weather_weather_network

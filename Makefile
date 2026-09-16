@@ -17,7 +17,7 @@ export GIT_COMMIT
 .PHONY: dvc-check-env dvc-config dvc-pull dvc-push dvc-repro dvc-add-model dvc-commit \
 	build up serve api gateway streamlit mlflow down logs test test-gateway pipeline \
 	train validate evaluate compare predict fetch-open-meteo merge-raw preprocess \
-	load-db register-dataset
+	load-db register-dataset airflow-up airflow-down airflow-reset
 
 # --- DVC stays on the host (Git pointers + local cache). Everything else is Compose. ---
 
@@ -121,3 +121,12 @@ load-db:
 
 register-dataset:
 	$(COMPOSE) run --rm --no-deps --build --entrypoint python api scripts/register_dataset_version.py $(ARGS)
+
+airflow-up:
+	cd airflow && docker compose --env-file .env --env-file ../.env up -d
+
+airflow-down:
+	cd airflow && docker compose --env-file .env --env-file ../.env down
+
+airflow-reset:
+	cd airflow && docker compose --env-file .env --env-file ../.env down -v
