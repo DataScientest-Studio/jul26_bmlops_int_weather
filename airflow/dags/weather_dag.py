@@ -1,8 +1,7 @@
 import os
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from airflow.operators.docker_operator import DockerOperator
-from airflow.utils.dates import days_ago
 from docker.types import Mount
 
 from airflow import DAG
@@ -14,11 +13,11 @@ with DAG(
     tags=["docker", "weather_ingestion"],
     default_args={
         "owner": "airflow",
-        "start_date": days_ago(0, minute=1),
+        "start_date": datetime(2026, 9, 1),
         "retries": 3,
         "retry_delay": timedelta(minutes=1),
     },
-    schedule_interval="0 17 * * *",
+    schedule_interval="0 22 * * *",
     catchup=False,
 ) as dag:
     ingestion = DockerOperator(
