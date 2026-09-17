@@ -195,4 +195,3 @@ def test_predict_via_api_converts_sample_keys() -> None:
         "rain_today": "No",
         "humidity_3pm": 42.0,
     }
-
