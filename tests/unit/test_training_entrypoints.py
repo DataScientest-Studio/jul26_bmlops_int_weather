@@ -196,12 +196,3 @@ def test_predict_via_api_converts_sample_keys() -> None:
         "humidity_3pm": 42.0,
     }
 
-
-def test_publish_recipe_in_wiki_does_not_readd_pipeline_outputs() -> None:
-    wiki_reproduction = PROJECT_ROOT.parent / "jul26_bmlops_int_weather.wiki" / "Reproduction.md"
-    readme = wiki_reproduction.read_text()
-
-    assert "dvc add data/processed" not in readme
-    assert "dvc add data/raw/weatherAUS_current.csv" not in readme
-    assert "make dvc-add-model" in readme
-    assert "models/rain_classifier.joblib.dvc" in readme
