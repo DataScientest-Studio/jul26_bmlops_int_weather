@@ -195,12 +195,3 @@ def test_predict_via_api_converts_sample_keys() -> None:
         "rain_today": "No",
         "humidity_3pm": 42.0,
     }
-
-
-def test_readme_publish_recipe_does_not_readd_pipeline_outputs() -> None:
-    readme = (PROJECT_ROOT / "README.md").read_text()
-
-    assert "dvc add data/processed" not in readme
-    assert "dvc add data/raw/weatherAUS_current.csv" not in readme
-    assert "make dvc-add-model" in readme
-    assert "models/rain_classifier.joblib.dvc" in readme

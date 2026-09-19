@@ -66,7 +66,7 @@ stages:
     cmd: python -m weather_mlops.models.predict --input-json sample_prediction.json --output data/predictions/sample_prediction.json
     deps:
       - sample_prediction.json
-      - models/rain_classifier.joblib
+      - models/best_model.joblib
       - src/weather_mlops/models/predict.py
       - src/weather_mlops/config/settings.py
     outs:
