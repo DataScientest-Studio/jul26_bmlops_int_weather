@@ -68,10 +68,10 @@ with DAG(
         network_mode="jul26_bmlops_int_weather_weather_network",
         auto_remove=True,
         command=(
-            "python3 -m weather_mlops.models.evaluation"
-            "--x-data data/processed/X_validation.csv"
-            "--y-data data/processed/y_validation.csv"
-            "--metrics-output reports/metrics/validation.json"
+            "python3 -m weather_mlops.models.evaluation "
+            "--x-data data/processed/X_validation.csv "
+            "--y-data data/processed/y_validation.csv "
+            "--metrics-output reports/metrics/validation.json "
             "--split-name validation"
         ),
         mount_tmp_dir=False,
