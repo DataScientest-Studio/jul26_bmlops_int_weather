@@ -14,6 +14,7 @@ from sklearn.metrics import (
     roc_auc_score,
 )
 
+from weather_mlops.config.settings import settings
 from weather_mlops.data.manifest import verify_processed_manifest
 from weather_mlops.data.versioning import hash_file
 
@@ -55,6 +56,22 @@ def _evaluation_run_id() -> str | None:
         return None
 
 
+def _log_report_artifact(metrics_output_path: Path, run_id: str | None) -> None:
+    if not run_id or not settings.mlflow_tracking_uri:
+        return
+    try:
+        from mlflow.tracking import MlflowClient
+
+        MlflowClient(tracking_uri=settings.mlflow_tracking_uri).log_artifact(
+            run_id, str(metrics_output_path), artifact_path="metrics"
+        )
+    except Exception as exc:
+        print(
+            f"MLflow tracking URI {settings.mlflow_tracking_uri} is unreachable; "
+            f"skipping report logging ({exc})."
+        )
+
+
 def evaluate_model(
     x_data_path: Path,
     y_data_path: Path,
@@ -74,6 +91,8 @@ def evaluate_model(
     probabilities = model.predict_proba(X_data)[:, 1]
     metrics = evaluate_classifier(y_data, predictions, probabilities)
 
+    run_id = _evaluation_run_id()
+
     metrics_output_path.parent.mkdir(parents=True, exist_ok=True)
     metrics_output_path.write_text(
         json.dumps(
@@ -82,7 +101,7 @@ def evaluate_model(
                 **{f"{split_name}_{name}": value for name, value in metrics.items()},
                 "model_sha256": hash_file(model_path, "sha256"),
                 "dataset_sha256": dataset_sha256,
-                "run_id": _evaluation_run_id(),
+                "run_id": run_id,
             },
             indent=2,
         )
@@ -94,12 +113,12 @@ def evaluate_model(
     for name, value in metrics.items():
         print(f"  {name:<10}: {value:.4f}")
 
+    _log_report_artifact(metrics_output_path, run_id)
+
     return metrics
 
 
 def parse_args() -> argparse.Namespace:
-    from weather_mlops.config.settings import settings
-
     parser = argparse.ArgumentParser(description="Evaluate a trained rainfall classifier.")
     parser.add_argument("--x-data", type=Path, default=settings.x_test_path)
     parser.add_argument("--y-data", type=Path, default=settings.y_test_path)
