@@ -45,11 +45,11 @@ the most recent period, so we are always predicting forward in time).
 
 - **Primary metric: ROC-AUC.** The baseline is **0.866** on the test set. A retrained model has
   to beat this number to replace the one in production.
-- **Guardrail: recall.** Currently **0.771**. Missing a rainy day costs more than a false alarm,
+- **Guardrail: recall.** Currently **0.762** on the test set. Missing a rainy day costs more than a false alarm,
   so we do not accept a model that raises accuracy by dropping recall below **0.75**.
 - **We deliberately do not use accuracy as the main metric.** Since it only rains 1 day in 4,
-  a model that always answers "No" would already score 77.6% accuracy — almost the same as our
-  79.0%. Accuracy would make a useless model look good.
+  a model that always answers "No" would already score 77.1% accuracy on the test set — almost
+  the same as our 79.8%. Accuracy would make a useless model look good.
 
 ### What is out of scope for now
 

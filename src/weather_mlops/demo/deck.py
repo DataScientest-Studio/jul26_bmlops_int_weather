@@ -1,8 +1,11 @@
 """build the html of each slide of the defense deck."""
 
 from weather_mlops.demo.presentation import (
+    CUTOFFS,
     METRICS,
     RECALL_GATE,
+    ROC_AUC,
+    ROC_POINTS,
     STAGES,
     TEAM,
     all_slides,
@@ -48,6 +51,23 @@ def make_points(slide, tag="ul"):
     return html + f"</{tag}>"
 
 
+def make_facts(slide):
+    if len(slide.get("facts", [])) == 0:
+        return ""
+    html = '<table class="facts">'
+    for label, value in slide["facts"]:
+        html = html + f"<tr><th>{label}</th><td>{value}</td></tr>"
+    return html + "</table>"
+
+
+def make_points_and_facts(slide):
+    # points on the left, key figures on the right
+    facts = make_facts(slide)
+    if facts == "":
+        return make_points(slide)
+    return f'<div class="split">{make_points(slide)}{facts}</div>'
+
+
 def make_lane(lane):
     html = f'<div class="lane"><p class="lane-name">{lane["name"]}</p><ol class="lane-steps">'
     for step in lane["steps"]:
@@ -81,7 +101,7 @@ def make_hero(slide):
         make_title(slide)
         + f'<div class="hero"><p class="hero-value">{value}</p>'
         + f'<p class="hero-label">{label}</p></div>'
-        + make_points(slide)
+        + make_points_and_facts(slide)
     )
 
 
@@ -107,7 +127,7 @@ def make_flow(slide):
     lanes = ""
     for lane in slide["lanes"]:
         lanes = lanes + make_lane(lane)
-    return make_title(slide) + f'<div class="lanes">{lanes}</div>' + make_points(slide)
+    return make_title(slide) + f'<div class="lanes">{lanes}</div>' + make_points_and_facts(slide)
 
 
 def make_bar(split, value, gate):
@@ -146,6 +166,48 @@ def make_metrics(slide):
     )
 
 
+def to_chart(fpr, tpr):
+    # the chart is 300 x 300 pixels, with (0, 0) in the bottom left corner
+    x = 40 + fpr * 300
+    y = 320 - tpr * 300
+    return x, y
+
+
+def make_roc(slide):
+    line = ""
+    for fpr, tpr in ROC_POINTS:
+        x, y = to_chart(fpr, tpr)
+        line = line + f"{x:.1f},{y:.1f} "
+    dots = ""
+    rows = ""
+    for cutoff, caught, flagged in CUTOFFS:
+        x, y = to_chart(flagged, caught)
+        dots = dots + f'<circle cx="{x:.1f}" cy="{y:.1f}" r="5" class="roc-dot"/>'
+        dots = dots + f'<text x="{x + 9:.1f}" y="{y + 15:.1f}" class="roc-label">{cutoff}</text>'
+        rows = rows + f"<tr><td>{cutoff}</td><td>{caught:.1%}</td><td>{flagged:.1%}</td></tr>"
+    chart = (
+        '<svg viewBox="0 0 360 360" class="roc-chart">'
+        f'<polygon points="40,320 {line}340,320" class="roc-area"/>'
+        '<line x1="40" y1="320" x2="340" y2="20" class="roc-diagonal"/>'
+        f'<polyline points="{line}" class="roc-line"/>'
+        '<line x1="40" y1="320" x2="340" y2="320" class="roc-axis"/>'
+        '<line x1="40" y1="320" x2="40" y2="20" class="roc-axis"/>'
+        '<text x="190" y="348" class="roc-axis-label">dry days flagged as rain</text>'
+        '<text x="14" y="170" class="roc-axis-label" transform="rotate(-90 14 170)">'
+        "rainy days caught</text>"
+        f'<text x="150" y="250" class="roc-auc">area = {ROC_AUC}</text>'
+        f"{dots}</svg>"
+    )
+    table = (
+        '<table class="facts"><tr><th>Cut-off</th><th>Rain caught</th><th>Dry flagged</th></tr>'
+        f"{rows}</table>"
+    )
+    return (
+        make_title(slide)
+        + f'<div class="split"><div>{chart}</div><div>{make_points(slide)}{table}</div></div>'
+    )
+
+
 def make_closing(slide):
     return (
         '<div class="cover">'
@@ -172,8 +234,10 @@ def make_body(slide):
         return make_title(slide) + make_points(slide, tag="ol")
     elif layout == "closing":
         return make_closing(slide)
+    elif layout == "roc":
+        return make_roc(slide)
     else:
-        return make_title(slide) + make_points(slide)
+        return make_title(slide) + make_points_and_facts(slide)
 
 
 def render_slide(index):

@@ -427,6 +427,80 @@
     margin: 0;
 }
 
+/* Key figures next to the points. */
+.facts {
+    border-collapse: collapse;
+    font-size: clamp(0.9rem, 1.15vw, 1.05rem);
+    margin: 0;
+}
+
+.facts th,
+.facts td {
+    text-align: left;
+    padding: 0.45rem 1rem 0.45rem 0;
+    border-bottom: 1px solid var(--line);
+}
+
+.facts th {
+    font-weight: 400;
+    color: var(--muted);
+}
+
+.facts td {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ROC curve drawn as svg. */
+.roc-chart {
+    width: 100%;
+    max-width: 22rem;
+}
+
+.roc-area {
+    fill: var(--rain);
+    fill-opacity: 0.12;
+}
+
+.roc-line {
+    fill: none;
+    stroke: var(--rain);
+    stroke-width: 2.5;
+}
+
+.roc-diagonal {
+    stroke: var(--muted);
+    stroke-dasharray: 5 5;
+}
+
+.roc-axis {
+    stroke: var(--muted);
+}
+
+.roc-dot {
+    fill: var(--ochre);
+}
+
+.roc-label,
+.roc-axis-label {
+    font-size: 11px;
+    fill: var(--muted);
+}
+
+.roc-axis-label {
+    text-anchor: middle;
+}
+
+.roc-auc {
+    font-size: 15px;
+    font-weight: 600;
+    fill: var(--rain);
+}
+
+.layout-roc .facts {
+    margin-top: 1.2rem;
+}
+
 @media (max-width: 820px) {
     .slide {
         aspect-ratio: auto;

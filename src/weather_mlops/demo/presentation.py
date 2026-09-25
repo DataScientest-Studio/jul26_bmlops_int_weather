@@ -26,6 +26,57 @@ METRICS = {
 }
 RECALL_GATE = 0.75
 
+# roc curve of the model on the test set: [false positive rate, true positive rate]
+ROC_POINTS = [
+    [0.0, 0.0],
+    [0.004, 0.162],
+    [0.008, 0.246],
+    [0.013, 0.294],
+    [0.019, 0.332],
+    [0.024, 0.365],
+    [0.03, 0.405],
+    [0.037, 0.434],
+    [0.044, 0.464],
+    [0.05, 0.489],
+    [0.058, 0.515],
+    [0.066, 0.541],
+    [0.075, 0.564],
+    [0.084, 0.587],
+    [0.093, 0.606],
+    [0.102, 0.626],
+    [0.113, 0.645],
+    [0.123, 0.662],
+    [0.136, 0.683],
+    [0.148, 0.7],
+    [0.162, 0.719],
+    [0.176, 0.738],
+    [0.188, 0.756],
+    [0.202, 0.773],
+    [0.217, 0.789],
+    [0.234, 0.806],
+    [0.252, 0.821],
+    [0.274, 0.836],
+    [0.297, 0.85],
+    [0.322, 0.865],
+    [0.353, 0.879],
+    [0.379, 0.894],
+    [0.415, 0.907],
+    [0.458, 0.92],
+    [0.5, 0.934],
+    [0.545, 0.947],
+    [0.596, 0.96],
+    [0.669, 0.974],
+    [0.768, 0.987],
+    [1.0, 1.0],
+]
+ROC_AUC = 0.866
+# cut-off, share of rainy days caught, share of dry days flagged as rain
+CUTOFFS = [
+    [0.3, 0.910, 0.427],
+    [0.5, 0.762, 0.191],
+    [0.7, 0.565, 0.075],
+]
+
 SECTIONS = [
     {
         "presenter": "Gabriel",
@@ -64,6 +115,12 @@ SECTIONS = [
                     "Target: rain tomorrow, one model for 49 stations.",
                     "Promotion metric: ROC-AUC.",
                     "Guardrail: recall of at least 0.75.",
+                ],
+                "facts": [
+                    ["Test rows", "24,808"],
+                    ["Rainy days", "5,689 (22.9%)"],
+                    ["Caught by always no", "0"],
+                    ["Caught by our model", "4,334 (76.2%)"],
                 ],
                 "links": [
                     ["Evaluation", "src/weather_mlops/models/evaluation.py"],
@@ -136,6 +193,12 @@ SECTIONS = [
                     "10 requests/s per IP, 1/s on training. Above that: 429.",
                     "TLS 1.2 or 1.3 only. Plain HTTP is redirected.",
                 ],
+                "facts": [
+                    ["Public ports", "80, 443"],
+                    ["API limit", "10 req/s per IP, burst 20"],
+                    ["/train limit", "1 req/s per IP, burst 3"],
+                    ["Max request body", "2 MB"],
+                ],
                 "links": [
                     ["Nginx config", "docker/nginx/nginx.conf"],
                     ["Auth", "src/weather_mlops/api/main.py"],
@@ -206,6 +269,12 @@ SECTIONS = [
                     "WeatherAUS covers 2007 to 2017. Open-Meteo adds new days.",
                     "DVC stores snapshots. A make target registers them in Postgres.",
                 ],
+                "facts": [
+                    ["Train rows", "93,076"],
+                    ["Validation rows", "24,358"],
+                    ["Test rows", "24,808"],
+                    ["Stations", "49"],
+                ],
                 "links": [
                     ["DVC pipeline", "dvc.yaml"],
                     ["Manifest", "src/weather_mlops/data/manifest.py"],
@@ -259,7 +328,7 @@ SECTIONS = [
                     ["Tracking", "src/weather_mlops/models/tracking.py"],
                 ],
                 "notes": [
-                    "About 2.5 minutes. Then hand over to Thomas.",
+                    "About 2 minutes.",
                     "Model: XGBoost with 250 trees, depth 4, learning rate 0.05, subsample "
                     "and column sample 0.9. The class weight is the ratio of dry to rainy "
                     "days in the training set: 3.38 in the latest run.",
@@ -290,6 +359,36 @@ SECTIONS = [
                     "weather-mlops-mlflow bucket.",
                 ],
             },
+            {
+                "id": "roc",
+                "title": "ROC curve: how well the model ranks days",
+                "layout": "roc",
+                "stages": [],
+                "figure": None,
+                "lanes": [],
+                "points": [
+                    "Each point is one cut-off between rain and no rain.",
+                    "The area under the curve is ROC-AUC: 0.866. Always no gets 0.5.",
+                    "We serve the 0.5 cut-off: 76.2% of rainy days caught.",
+                ],
+                "links": [
+                    ["Evaluation", "src/weather_mlops/models/evaluation.py"],
+                ],
+                "notes": [
+                    "About 1 minute. Then hand over to Thomas.",
+                    "ROC stands for Receiver Operating Characteristic, AUC for Area Under "
+                    "the Curve. The curve is computed on the 24,808 test rows.",
+                    "Up means more rainy days caught. Right means more dry days wrongly "
+                    "flagged as rain.",
+                    "The dots are three cut-offs: 0.3 catches 91.0% of rainy days but flags "
+                    "42.7% of dry days; 0.5, the one we serve, catches 76.2% and flags "
+                    "19.1%; 0.7 catches 56.5% and flags 7.5%.",
+                    "The dashed diagonal is a model with no skill, area 0.5. Always "
+                    "answering no is its bottom-left corner.",
+                    "Accuracy would prefer the 0.7 cut-off, 84.2% accuracy, while missing "
+                    "2,472 rainy days instead of 1,355. The recall guardrail stops that.",
+                ],
+            },
         ],
     },
     {
@@ -318,6 +417,12 @@ SECTIONS = [
                     "Four endpoints: health, predict, live predict, train.",
                     "Out-of-range values and unknown stations are rejected.",
                     "Every answer names the model that produced it.",
+                ],
+                "facts": [
+                    ["Endpoints", "4"],
+                    ["Rainfall bounds", "0 to 500 mm"],
+                    ["Live weather timeout", "30 s"],
+                    ["Stations accepted", "49"],
                 ],
                 "links": [
                     ["API", "src/weather_mlops/api/main.py"],
@@ -361,6 +466,12 @@ SECTIONS = [
                     "Training goes through the gateway, like any client.",
                     "Three retries per task.",
                 ],
+                "facts": [
+                    ["Schedule", "daily, 22:00"],
+                    ["Tasks", "5"],
+                    ["Retries", "3, one minute apart"],
+                    ["Verified run", "25 Sep: 5 of 5 in 44 s"],
+                ],
                 "links": [
                     ["Airflow DAG", "airflow/dags/weather_dag.py"],
                 ],
@@ -403,6 +514,12 @@ SECTIONS = [
                     {"name": "Release, on master", "steps": ["Build", "Push to ghcr.io"]},
                 ],
                 "points": [],
+                "facts": [
+                    ["CI jobs", "2"],
+                    ["Tests", "122 (6 live gateway)"],
+                    ["Images built", "7"],
+                    ["Images on ghcr.io", "3"],
+                ],
                 "links": [
                     ["CI workflow", ".github/workflows/ci.yml"],
                     ["Release workflow", ".github/workflows/release.yml"],
@@ -418,7 +535,7 @@ SECTIONS = [
                     "https://nginx, so the live gateway tests run too.",
                     "The live tests check the HTTP redirect, the TLS version, HSTS, 401 "
                     "without credentials, and a burst that must return 429.",
-                    "The suite collects 131 tests, including the ones for this deck.",
+                    "The committed suite collects 122 tests, 6 of them live gateway tests.",
                     "Release, on push to master: log in to ghcr.io with the workflow token "
                     "and push the ingestion, preprocess and API images, approved by Nicolas "
                     "on 10 Sep.",
@@ -483,6 +600,10 @@ SECTIONS = [
                     "Drift detection with Evidently.",
                     "Storing each prediction with its features.",
                     "Metrics and alerts with Prometheus and Grafana.",
+                ],
+                "facts": [
+                    ["Tables ready", "predictions, drift_reports"],
+                    ["Lifecycle stages built", "8 of 9"],
                 ],
                 "links": [
                     ["Schema", "supabase/schema.sql"],
