@@ -134,7 +134,7 @@ the most recent period, so we are always predicting forward in time).
 - ✅ Create a simple **Streamlit** application to interact with the API and make predictions. // Ziad — `make streamlit`, three screens, no `SUPABASE_KEY`. DONE 2026-09-15
 - Finish the repo's technical documentation. // Gabriel (maybe use WIKI - README (first overview - talk about the project setup / goal + setup + technologies) - This PR rewrote README for Compose-first commands; wiki still open. 
 
-### Final Presentation (Defense) — Oct 13
+### Final Presentation (Defense) — Oct 15, 3 PM
 
 - 15-minute presentation: explain project progress and chosen architecture.
 - 5-minute demonstration: show the application is functional.
