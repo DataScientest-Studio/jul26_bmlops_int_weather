@@ -74,6 +74,7 @@ with DAG(
             "--metrics-output reports/metrics/validation.json "
             "--split-name validation"
         ),
+        environment={"MLFLOW_TRACKING_URI": "http://mlflow:8080"},
         mount_tmp_dir=False,
     )
     compare = DockerOperator(
