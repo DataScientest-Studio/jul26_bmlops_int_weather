@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -34,3 +35,7 @@ def test_nginx_does_not_expose_mlflow_or_airflow() -> None:
     assert "8080" not in NGINX_CONF
     assert "airflow" not in NGINX_CONF.lower()
     assert "mlflow" not in NGINX_CONF.lower()
+
+
+def test_nginx_blocks_metrics_endpoint() -> None:
+    assert re.search(r"location /metrics \{\s*return 404;\s*\}", NGINX_CONF)

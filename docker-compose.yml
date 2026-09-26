@@ -163,5 +163,15 @@ services:
       timeout: 5s
       retries: 5
 
+  prometheus:
+    profiles: ["monitoring"]
+    image: prom/prometheus:v3.15.0
+    networks:
+      - weather_network
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
 networks:
   weather_network:

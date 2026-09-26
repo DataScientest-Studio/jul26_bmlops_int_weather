@@ -1,6 +1,7 @@
 import difflib
 import os
 import secrets
+
 from contextlib import asynccontextmanager
 from datetime import date
 from functools import lru_cache
@@ -8,6 +9,7 @@ from typing import Literal
 
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from prometheus_fastapi_instrumentator import Instrumentator
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from weather_mlops.config.settings import settings
@@ -365,3 +367,6 @@ def predict_live_endpoint(
         return predict(features_dict)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=f"Required model not found: {e}.") from e
+
+
+instrumentator = Instrumentator().instrument(app).expose(app)
