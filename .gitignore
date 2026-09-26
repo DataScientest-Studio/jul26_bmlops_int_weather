@@ -120,3 +120,6 @@ docker/nginx/certs/
 # Local MLflow tracking store (sqlite + artifacts).
 /mlflow-data/
 /reports/mlflow_run.json
+
+# internal files
+*.html

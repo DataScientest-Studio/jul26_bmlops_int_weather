@@ -45,11 +45,11 @@ the most recent period, so we are always predicting forward in time).
 
 - **Primary metric: ROC-AUC.** The baseline is **0.866** on the test set. A retrained model has
   to beat this number to replace the one in production.
-- **Guardrail: recall.** Currently **0.771**. Missing a rainy day costs more than a false alarm,
+- **Guardrail: recall.** Currently **0.762** on the test set. Missing a rainy day costs more than a false alarm,
   so we do not accept a model that raises accuracy by dropping recall below **0.75**.
 - **We deliberately do not use accuracy as the main metric.** Since it only rains 1 day in 4,
-  a model that always answers "No" would already score 77.6% accuracy — almost the same as our
-  79.0%. Accuracy would make a useless model look good.
+  a model that always answers "No" would already score 77.1% accuracy on the test set — almost
+  the same as our 79.8%. Accuracy would make a useless model look good.
 
 ### What is out of scope for now
 
@@ -134,7 +134,7 @@ the most recent period, so we are always predicting forward in time).
 - ✅ Create a simple **Streamlit** application to interact with the API and make predictions. // Ziad — `make streamlit`, three screens, no `SUPABASE_KEY`. DONE 2026-09-15
 - Finish the repo's technical documentation. // Gabriel (maybe use WIKI - README (first overview - talk about the project setup / goal + setup + technologies) - This PR rewrote README for Compose-first commands; wiki still open. 
 
-### Final Presentation (Defense) — Oct 13
+### Final Presentation (Defense) — Oct 15, 3 PM
 
 - 15-minute presentation: explain project progress and chosen architecture.
 - 5-minute demonstration: show the application is functional.
