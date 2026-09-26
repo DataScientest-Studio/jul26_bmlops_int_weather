@@ -1,23 +1,25 @@
 import os
 from datetime import datetime, timedelta
 
+import pendulum
 from airflow.operators.docker_operator import DockerOperator
 from docker.types import Mount
 
 from airflow import DAG
 
 path = os.environ.get("HOST_PROJECT_PATH")
+local_tz = pendulum.timezone("Europe/Berlin")
 
 with DAG(
     dag_id="weather_pipeline",
     tags=["docker", "weather_ingestion"],
     default_args={
         "owner": "airflow",
-        "start_date": datetime(2026, 9, 1),
+        "start_date": datetime(2026, 9, 1, tzinfo=local_tz),
         "retries": 3,
         "retry_delay": timedelta(minutes=1),
     },
-    schedule_interval="0 22 * * *",
+    schedule_interval="0 18 * * *",
     catchup=False,
 ) as dag:
     ingestion = DockerOperator(
