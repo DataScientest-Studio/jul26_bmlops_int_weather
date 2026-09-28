@@ -8,8 +8,17 @@ from typing import Literal
 
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from prometheus_fastapi_instrumentator import Instrumentator
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from weather_mlops.api.metrics import (
+    model_info,
+    model_performance,
+    model_predictions_total,
+    model_probability_distribution,
+    model_training_duration_seconds,
+    model_training_total,
+)
 from weather_mlops.config.settings import settings
 from weather_mlops.data.open_meteo import (
     OpenMeteoError,
@@ -317,14 +326,21 @@ def train_endpoint(
     /predict uses the newly trained model on the next call.
     """
     try:
-        pipeline, metrics = train_model(**features.model_dump())
+        with model_training_duration_seconds.time():
+            pipeline, metrics = train_model(**features.model_dump())
         clear_model_cache()
         get_locations.cache_clear()
-        return metrics
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=f"Required file not found: {e}") from e
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e)) from e
+
+    model_training_total.inc()
+
+    for key, value in metrics.items():
+        model_performance.labels(metric=key).set(value)
+
+    return metrics
 
 
 @app.post("/predict/live_data", response_model=PredictionOutput)
@@ -362,6 +378,28 @@ def predict_live_endpoint(
     records = df.to_dict(orient="records")
     features_dict = records[0]
     try:
-        return predict(features_dict)
+        result = predict(features_dict)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=f"Required model not found: {e}.") from e
+
+    model_predictions_total.labels(
+        location=location.location,
+        rain_tomorrow=str(result["rain_tomorrow"]),
+    ).inc()
+
+    model_probability_distribution.labels(
+        location=location.location,
+    ).observe(result["probability"])
+
+    model = result["model"]
+    model_info.clear()
+    model_info.labels(
+        name=model["name"] or "unknown",
+        version=model["version"] or "unknown",
+        source=model["source"] or "unknown",
+    ).set(1)
+
+    return result
+
+
+instrumentator = Instrumentator().instrument(app).expose(app)

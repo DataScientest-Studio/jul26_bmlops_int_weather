@@ -17,7 +17,7 @@ export GIT_COMMIT
 .PHONY: dvc-check-env dvc-config dvc-pull dvc-push dvc-repro dvc-add-model dvc-commit \
 	build up serve api gateway streamlit mlflow down logs test test-gateway pipeline \
 	train validate evaluate compare predict fetch-open-meteo merge-raw preprocess \
-	load-db register-dataset airflow-up airflow-down airflow-reset
+	load-db register-dataset airflow-up airflow-down airflow-reset monitoring
 
 # --- DVC stays on the host (Git pointers + local cache). Everything else is Compose. ---
 
@@ -67,8 +67,11 @@ streamlit: serve
 mlflow:
 	$(LOCAL_ENV) uv run python scripts/with_vault_env.py --s3 $(COMPOSE) --profile mlflow up -d --build --wait mlflow
 
+monitoring: serve
+	$(COMPOSE) --profile monitoring up -d prometheus grafana
+
 down:
-	$(COMPOSE) --profile gateway --profile streamlit --profile test --profile mlflow down --remove-orphans
+	$(COMPOSE) --profile gateway --profile streamlit --profile test --profile mlflow --profile monitoring down --remove-orphans
 
 logs:
 	$(COMPOSE) logs -f $(SERVICE)

@@ -1,0 +1,6 @@
+apiVersion: 1
+providers:
+  - name: Weather_dashboards
+    type: file
+    options:
+      path: /etc/grafana/dashboards
