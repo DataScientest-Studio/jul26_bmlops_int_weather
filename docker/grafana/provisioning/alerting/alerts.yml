@@ -338,3 +338,4 @@ groups:
           isPaused: false
           notification_settings:
             receiver: airflow-retrain
+            repeat_interval: 24h
