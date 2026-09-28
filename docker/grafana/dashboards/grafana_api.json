@@ -279,7 +279,8 @@
                 "value": 80
               }
             ]
-          }
+          },
+          "unit": "s"
         }
       },
       "gridPos": {
@@ -314,13 +315,13 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))",
-          "legendFormat": "__auto",
+          "expr": "sum by (handler) (rate(http_request_duration_seconds_sum{handler!=\"/train\"}[5m])) / sum by (handler) (rate(http_request_duration_seconds_count{handler!=\"/train\"}[5m]))",
+          "legendFormat": "{{handler}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Request duration in seconds",
+      "title": "Average request duration (without /train)",
       "type": "timeseries"
     }
   ],

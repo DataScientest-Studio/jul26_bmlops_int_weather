@@ -405,7 +405,41 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "thresholds"
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
           },
           "decimals": 3,
           "max": 1,
@@ -419,63 +453,11 @@
               },
               {
                 "color": "red",
-                "value": 80
+                "value": 0.75
               }
             ]
           }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "roc_auc",
-              "scope": "series"
-            },
-            "properties": [
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "dark-red",
-                      "value": 0
-                    },
-                    {
-                      "color": "dark-green",
-                      "value": 0.866
-                    }
-                  ]
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "recall",
-              "scope": "series"
-            },
-            "properties": [
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "dark-red",
-                      "value": 0
-                    },
-                    {
-                      "color": "dark-green",
-                      "value": 0.75
-                    }
-                  ]
-                }
-              }
-            ]
-          }
-        ]
+        }
       },
       "gridPos": {
         "h": 8,
@@ -485,28 +467,21 @@
       },
       "id": 5,
       "options": {
-        "displayMode": "basic",
+        "annotations": {
+          "clustering": -1,
+          "multiLane": false
+        },
         "legend": {
           "calcs": [],
           "displayMode": "list",
           "placement": "bottom",
-          "showLegend": false
+          "showLegend": true
         },
-        "maxVizHeight": 300,
-        "minVizHeight": 16,
-        "minVizWidth": 8,
-        "namePlacement": "auto",
-        "orientation": "horizontal",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showUnfilled": true,
-        "sizing": "auto",
-        "valueMode": "color"
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
       },
       "pluginVersion": "13.0.9",
       "targets": [
@@ -518,14 +493,14 @@
           "editorMode": "code",
           "exemplar": false,
           "expr": "model_performance",
-          "instant": true,
+          "instant": false,
           "legendFormat": "{{metric}}",
-          "range": false,
+          "range": true,
           "refId": "A"
         }
       ],
       "title": "Model performance",
-      "type": "bargauge"
+      "type": "timeseries"
     },
     {
       "datasource": {
@@ -761,8 +736,8 @@
     ]
   },
   "timezone": "browser",
-  "title": "Weather model",
-  "version": 3,
+  "title": "Weather Model",
+  "version": 4,
   "uid": "weather-model",
   "id": null
 }
