@@ -337,4 +337,4 @@ groups:
             action: retrain
           isPaused: false
           notification_settings:
-            receiver: empty
+            receiver: airflow-retrain

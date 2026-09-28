@@ -185,6 +185,8 @@ services:
       GF_SECURITY_ADMIN_USER:
       GF_SECURITY_ADMIN_PASSWORD:
       GF_PLUGINS_PREINSTALL_DISABLED: "true"
+      AIRFLOW_API_USER:
+      AIRFLOW_API_PASSWORD:
     depends_on:
       - prometheus
     volumes:

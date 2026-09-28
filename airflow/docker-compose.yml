@@ -67,6 +67,7 @@ services:
         condition: service_healthy
     networks:
       - airflow_network
+      - weather_network
 
 
   airflow-scheduler:
