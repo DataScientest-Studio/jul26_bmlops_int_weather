@@ -6,6 +6,7 @@ from datetime import date
 from functools import lru_cache
 from typing import Literal
 
+import pandas as pd
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from prometheus_fastapi_instrumentator import Instrumentator
@@ -27,6 +28,8 @@ from weather_mlops.data.open_meteo import (
     normalize_open_meteo_payloads,
     read_locations,
 )
+from weather_mlops.data.preprocess import TARGET_COLUMN
+from weather_mlops.models.evaluation import evaluate_classifier
 from weather_mlops.models.predict import (
     clear_model_cache,
     describe_serving_model,
@@ -69,6 +72,17 @@ def convert(x):
     x = x.split("_")
     res = "".join(word.capitalize() for word in x)
     return res
+
+
+def validation_metrics(pipeline) -> dict[str, float]:
+    """Score a freshly trained pipeline on the validation split for Prometheus."""
+    X_val = pd.read_csv(settings.x_validation_path)
+    y_val = pd.read_csv(settings.y_validation_path)[TARGET_COLUMN]
+    return evaluate_classifier(
+        y_val,
+        pipeline.predict(X_val),
+        pipeline.predict_proba(X_val)[:, 1],
+    )
 
 
 @lru_cache(maxsize=1)
@@ -205,12 +219,17 @@ class PredictionOutput(BaseModel):
     model: ServingModel
 
 
-class TrainOutput(BaseModel):
+class ModelMetrics(BaseModel):
     accuracy: float
     precision: float
     recall: float
     f1: float
     roc_auc: float
+
+
+class TrainOutput(BaseModel):
+    train: ModelMetrics
+    validation: ModelMetrics
 
 
 @asynccontextmanager
@@ -319,7 +338,7 @@ def train_endpoint(
     _: None = Depends(require_auth),
 ):
     """
-    Train a new rainfall classifier and return its evaluation metrics.
+    Train a new rainfall classifier and return its train and evaluation metrics.
 
     Retrains the model on the current training data using the given
     hyperparameters, saves it to disk, and clears the prediction cache so
@@ -337,10 +356,13 @@ def train_endpoint(
 
     model_training_total.inc()
 
-    for key, value in metrics.items():
+    val_metrics = validation_metrics(pipeline)
+    for key, value in val_metrics.items():
         model_performance.labels(metric=key).set(value)
 
-    return metrics
+    train_val_dict = {"train": metrics, "validation": val_metrics}
+
+    return train_val_dict
 
 
 @app.post("/predict/live_data", response_model=PredictionOutput)

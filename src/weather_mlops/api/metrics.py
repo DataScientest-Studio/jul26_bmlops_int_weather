@@ -31,6 +31,6 @@ model_info = Gauge(
 
 model_performance = Gauge(
     "model_performance",
-    "The performance of the used model",
+    "Validation-set performance of the last trained model",
     ["metric"],
 )

@@ -46,6 +46,10 @@ def client(monkeypatch):
         "weather_mlops.api.main.train_model",
         lambda **_kwargs: (None, TRAIN_METRICS),
     )
+    monkeypatch.setattr(
+        "weather_mlops.api.main.validation_metrics",
+        lambda _pipeline: TRAIN_METRICS,
+    )
     with TestClient(app) as test_client:
         yield test_client
 
@@ -99,7 +103,8 @@ def test_train_passes_auth_when_credentials_match(client):
     response = client.post("/train", json={}, auth=(GOOD_USER, GOOD_PASS))
 
     assert response.status_code == 200
-    assert response.json()["roc_auc"] == 0.8
+    assert response.json()["train"]["roc_auc"] == 0.8
+    assert response.json()["validation"]["roc_auc"] == 0.8
 
 
 def test_predict_live_data_rejects_missing_credentials(client):
