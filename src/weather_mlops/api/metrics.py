@@ -20,7 +20,7 @@ model_probability_distribution = Histogram(
 model_training_duration_seconds = Histogram(
     "model_training_duration_seconds",
     "Training duration of a model.",
-    buckets=[1, 2, 4, 8, 16, 32, 64, 128, 256],
+    buckets=[5, 10, 15, 20, 30, 60, 120, 300],
 )
 
 model_info = Gauge(
