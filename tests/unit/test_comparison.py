@@ -49,6 +49,19 @@ class FakeClient:
     def set_registered_model_alias(self, name, alias, version):
         self.aliases[(name, alias)] = str(version)
 
+    def get_model_version(self, _name, _version):
+        return SimpleNamespace(run_id="run-1")
+
+    def list_artifacts(self, _run_id):
+        paths = {
+            "model",
+            "joblib/rain_classifier.joblib",
+            "metrics/train.json",
+            "dataset/manifest.json",
+            "lineage/release.json",
+        }
+        return [SimpleNamespace(path=path) for path in paths]
+
 
 def _metrics(model_path, **extra) -> str:
     payload = {
@@ -66,6 +79,20 @@ def _patch_compare(tmp_path, monkeypatch, metrics_text: str, metadata: dict, fak
     best_path = tmp_path / "best_model.joblib"
     if not model_path.exists():
         model_path.write_bytes(b"model")
+    metadata.setdefault(
+        "release",
+        {
+            "run_id": metadata["run_id"],
+            "model_version": metadata["model_version"],
+            "model_uri": metadata.get("model_uri", "models:/weather-rainfall-classifier/1"),
+            "artifact_uri": "runs:/run-1/model",
+            "model_sha256": hash_file(model_path, "sha256"),
+            "dataset_sha256": "dataset-sha",
+            "git_commit": "abc123",
+            "preprocessing_version": "2026.09.15",
+            "split": {},
+        },
+    )
     metrics = tmp_path / "validation.json"
     metrics.write_text(metrics_text, encoding="utf-8")
     monkeypatch.setattr(comparison.settings, "model_path", model_path)

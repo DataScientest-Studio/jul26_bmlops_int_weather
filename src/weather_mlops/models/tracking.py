@@ -12,7 +12,8 @@ from mlflow.tracking import MlflowClient
 
 from weather_mlops.config.settings import settings
 from weather_mlops.data.catalog import current_git_commit
-from weather_mlops.data.database import catalog_registered_model
+from weather_mlops.models.reconcile_catalog import sync_release_to_catalog
+from weather_mlops.models.release import build_model_release
 
 # MLflow 3.16 skops refuses these types unless they are explicit.
 SKOPS_TRUSTED_TYPES = [
@@ -47,6 +48,7 @@ def save_mlflow_run_metadata(
     model_version: str | None,
     model_uri: str | None,
     model_sha256: str | None = None,
+    release: dict[str, Any] | None = None,
     path: Path | None = None,
 ) -> None:
     metadata_path = path or settings.mlflow_run_metadata_path
@@ -57,6 +59,7 @@ def save_mlflow_run_metadata(
         "model_uri": model_uri,
         "model_sha256": model_sha256,
         "model_name": settings.mlflow_model_name,
+        "release": release,
     }
     metadata_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
@@ -105,6 +108,8 @@ def log_training_run(
 
     dataset_sha256 = manifest.get("sha256")
     git_commit = current_git_commit()
+    if not model_sha256:
+        raise ValueError("A model SHA-256 is required for an MLflow release.")
     params = {
         "n_estimators": n_estimators,
         "max_depth": max_depth,
@@ -155,6 +160,16 @@ def log_training_run(
                 f"but no version exists for run {run.info.run_id}."
             )
         model_version = max(versions, key=lambda item: int(item.version))
+        release = build_model_release(
+            run_id=run.info.run_id,
+            model_version=str(model_version.version),
+            model_uri=model_info.model_uri,
+            artifact_uri=model_info.model_uri,
+            model_sha256=model_sha256,
+            manifest=manifest,
+            git_commit=git_commit,
+        )
+        mlflow.log_dict(release, "lineage/release.json")
         client.set_model_version_tag(
             name=settings.mlflow_model_name,
             version=model_version.version,
@@ -177,16 +192,9 @@ def log_training_run(
             model_version=str(model_version.version),
             model_uri=model_info.model_uri,
             model_sha256=model_sha256,
+            release=release,
         )
-        catalog_registered_model(
-            run_id=run.info.run_id,
-            model_version=str(model_version.version),
-            model_uri=model_info.model_uri,
-            dataset_sha256=dataset_sha256,
-            params=params,
-            metrics={f"train_{name}": float(value) for name, value in metrics.items()},
-            stage="candidate",
-        )
+        catalog_sync = sync_release_to_catalog(release, catalog_client=None)
         print(
             f"Registered model: {settings.mlflow_model_name}\n"
             f"  run_id: {run.info.run_id}\n"
@@ -198,4 +206,6 @@ def log_training_run(
             "model_version": str(model_version.version),
             "model_uri": model_info.model_uri,
             "model_sha256": model_sha256,
+            "release": release,
+            "catalog_sync": catalog_sync,
         }

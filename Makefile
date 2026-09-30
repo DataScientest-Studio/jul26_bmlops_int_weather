@@ -20,6 +20,8 @@ export GIT_COMMIT
 	load-db register-dataset airflow-up airflow-down airflow-reset monitoring \
 	supabase-migrate supabase-verify vault-put evidently
 
+.PHONY: reconcile-model-catalog
+
 # --- DVC stays on the host (Git pointers + local cache). Everything else is Compose. ---
 
 dvc-check-env:
@@ -94,6 +96,9 @@ pipeline: train
 
 compare:
 	$(COMPOSE) run --rm --no-deps --entrypoint python api -m weather_mlops.models.comparison
+
+reconcile-model-catalog:
+	$(LOCAL_ENV) uv run python -m weather_mlops.models.reconcile_catalog $(if $(RUN_ID),--run-id $(RUN_ID))
 
 train: serve
 	$(COMPOSE) run --rm --no-deps -e API_URL="$(API_URL)" -e TRAIN_PARAMS='$(TRAIN_PARAMS)' --entrypoint python api scripts/train_via_api.py
