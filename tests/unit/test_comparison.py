@@ -82,6 +82,8 @@ def _patch_compare(tmp_path, monkeypatch, metrics_text: str, metadata: dict, fak
         lambda: metadata,
     )
     monkeypatch.setattr(comparison, "MlflowClient", lambda tracking_uri=None: fake)
+    monkeypatch.setattr(comparison.settings, "supabase_url", None)
+    monkeypatch.setattr(comparison.settings, "supabase_key", None)
     return model_path, best_path
 
 
@@ -277,3 +279,101 @@ def test_compare_rejects_stale_processed_csvs(tmp_path, monkeypatch) -> None:
     except ValueError as exc:
         assert "do not match" in str(exc)
     assert fake.aliases == {}
+
+
+class _CatalogClient:
+    def __init__(self) -> None:
+        self.table_name = None
+        self.row = None
+        self.on_conflict = None
+        self.updates: list[dict] = []
+
+    def table(self, name: str):
+        self.table_name = name
+        return self
+
+    def upsert(self, row, on_conflict=None):
+        self.row = row
+        self.on_conflict = on_conflict
+        return self
+
+    def update(self, row):
+        self.updates.append(row)
+        return self
+
+    def eq(self, *_args, **_kwargs):
+        return self
+
+    def neq(self, *_args, **_kwargs):
+        return self
+
+    def execute(self):
+        return self
+
+
+def test_compare_writes_champion_row_to_model_versions(tmp_path, monkeypatch) -> None:
+    from weather_mlops.data.manifest import (
+        PROCESSED_FILES,
+        build_processed_manifest,
+        write_processed_manifest,
+    )
+
+    fake = FakeClient()
+    catalog = _CatalogClient()
+    model_path = tmp_path / "rain_classifier.joblib"
+    model_path.write_bytes(b"model")
+    for name in PROCESSED_FILES:
+        (tmp_path / name).write_text(f"{name}\n", encoding="utf-8")
+    x_train = tmp_path / "X_train.csv"
+    x_train.write_text("Location,MinTemp\nSydney,12.0\n", encoding="utf-8")
+    manifest = build_processed_manifest(
+        tmp_path,
+        parent_sha256="rawsha",
+        train_fraction=0.7,
+        validation_fraction=0.15,
+    )
+    write_processed_manifest(manifest, tmp_path / "manifest.json")
+    _patch_compare(
+        tmp_path,
+        monkeypatch,
+        _metrics(model_path, dataset_sha256=manifest["sha256"]),
+        {
+            "run_id": "run-1",
+            "model_version": "1",
+            "model_uri": "models:/weather-rainfall-classifier/1",
+        },
+        fake,
+    )
+    monkeypatch.setattr(comparison.settings, "processed_manifest_path", tmp_path / "manifest.json")
+    monkeypatch.setattr(comparison.settings, "x_train_path", x_train)
+
+    result = comparison.compare_models(catalog_client=catalog)
+
+    assert result["promoted"] is True
+    assert catalog.row["stage"] == "champion"
+    assert catalog.row["mlflow_run_id"] == "run-1"
+    assert catalog.row["dataset_sha256"] == manifest["sha256"]
+    assert catalog.row["metrics"]["validation_roc_auc"] == 0.88
+    assert catalog.row["feature_schema"]["columns"] == ["Location", "MinTemp"]
+    assert catalog.row["mlflow_model_version"] == "1"
+    assert catalog.on_conflict == "mlflow_run_id"
+
+
+def test_compare_writes_candidate_when_recall_fails(tmp_path, monkeypatch) -> None:
+    fake = FakeClient()
+    catalog = _CatalogClient()
+    model_path = tmp_path / "rain_classifier.joblib"
+    model_path.write_bytes(b"model")
+    _patch_compare(
+        tmp_path,
+        monkeypatch,
+        _metrics(model_path, validation_roc_auc=0.90, validation_recall=0.70),
+        {"run_id": "run-1", "model_version": "1"},
+        fake,
+    )
+
+    result = comparison.compare_models(catalog_client=catalog)
+
+    assert result["promoted"] is False
+    assert catalog.row["stage"] == "candidate"
+    assert catalog.row["mlflow_run_id"] == "run-1"

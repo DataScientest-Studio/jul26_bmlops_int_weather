@@ -17,7 +17,9 @@ S3_SETTINGS = (
     ("AWS_ACCESS_KEY_ID", "aws_access_key_id"),
     ("AWS_SECRET_ACCESS_KEY", "aws_secret_access_key"),
 )
-VAULT_SETTINGS = AUTH_SETTINGS + S3_SETTINGS
+SCHEMA_SETTINGS = (("SUPABASE_DB_URL", "supabase_db_url"),)
+VAULT_SETTINGS = AUTH_SETTINGS + S3_SETTINGS + SCHEMA_SETTINGS
+ALLOWED_SECRET_NAMES = {name for name, _attr in VAULT_SETTINGS}
 
 _client = None
 
@@ -80,6 +82,26 @@ def default_vault_fetcher(name: str) -> str | None:
     if isinstance(data, str) and data:
         return data
     return None
+
+
+def put_app_secret(name: str, value: str, *, client=None) -> None:
+    """Create or rotate a named Vault secret through `public.put_app_secret`."""
+
+    if name not in ALLOWED_SECRET_NAMES:
+        raise VaultError(f"Unknown secret name: {name}")
+    if not value:
+        raise VaultError(f"Refusing to store an empty value for {name}")
+
+    rpc_client = client if client is not None else _supabase_client()
+    if rpc_client is None:
+        raise VaultError("SUPABASE_URL and SUPABASE_KEY must be set to write Vault secrets.")
+    try:
+        rpc_client.rpc(
+            "put_app_secret",
+            {"secret_name": name, "secret_value": value},
+        ).execute()
+    except Exception as exc:
+        raise VaultError(f"Vault RPC failed while writing {name}") from exc
 
 
 def hydrate_runtime_secrets(

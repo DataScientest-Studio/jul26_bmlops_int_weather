@@ -17,7 +17,8 @@ export GIT_COMMIT
 .PHONY: dvc-check-env dvc-config dvc-pull dvc-push dvc-repro dvc-add-model dvc-commit \
 	build up serve api gateway streamlit mlflow down logs test test-gateway pipeline \
 	train validate evaluate compare predict fetch-open-meteo merge-raw preprocess \
-	load-db register-dataset airflow-up airflow-down airflow-reset monitoring
+	load-db register-dataset airflow-up airflow-down airflow-reset monitoring \
+	supabase-migrate supabase-verify vault-put evidently
 
 # --- DVC stays on the host (Git pointers + local cache). Everything else is Compose. ---
 
@@ -133,3 +134,18 @@ airflow-down:
 
 airflow-reset:
 	cd airflow && docker compose --env-file .env --env-file ../.env down -v
+
+# Host runner. Writes reports/evidently/feature_drift.html. ARGS='--simulate' to inject drift.
+evidently:
+	$(LOCAL_ENV) uv run python -m weather_mlops.monitoring.drift $(ARGS)
+
+supabase-migrate:
+	$(LOCAL_ENV) uv run python scripts/apply_supabase_schema.py $(ARGS)
+
+supabase-verify:
+	$(LOCAL_ENV) uv run python scripts/apply_supabase_schema.py --verify-only
+
+# NAME is required. VALUE may be omitted; the script then reads stdin.
+vault-put:
+	@test -n "$(NAME)" || (echo "Usage: make vault-put NAME=SUPABASE_DB_URL VALUE='postgresql://...'"; exit 1)
+	$(LOCAL_ENV) uv run python scripts/put_vault_secret.py "$(NAME)" $(if $(VALUE),--value "$(VALUE)",)

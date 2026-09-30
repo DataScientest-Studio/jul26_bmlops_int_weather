@@ -50,6 +50,7 @@ def client(monkeypatch):
         "weather_mlops.api.main.validation_metrics",
         lambda _pipeline: TRAIN_METRICS,
     )
+    monkeypatch.setattr("weather_mlops.api.main.log_serving_prediction", lambda **_kwargs: None)
     with TestClient(app) as test_client:
         yield test_client
 
@@ -91,6 +92,30 @@ def test_predict_passes_auth_when_credentials_match(client):
     assert response.json()["rain_tomorrow"] is False
     assert response.json()["model"]["alias"] == "champion"
     assert response.json()["model"]["version"] == "3"
+
+
+def test_predict_logs_serving_row(client, monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        "weather_mlops.api.main.log_serving_prediction",
+        lambda **kwargs: calls.append(kwargs),
+    )
+
+    response = client.post(
+        "/predict",
+        json={
+            "location": "Sydney",
+            "rainfall": 0.0,
+            "humidity_3pm": 30.0,
+            "pressure_3pm": 1015.0,
+        },
+        auth=(GOOD_USER, GOOD_PASS),
+    )
+
+    assert response.status_code == 200
+    assert calls[0]["endpoint"] == "predict"
+    assert calls[0]["location"] == "Sydney"
+    assert calls[0]["result"]["probability"] == 0.12
 
 
 def test_train_rejects_missing_credentials(client):

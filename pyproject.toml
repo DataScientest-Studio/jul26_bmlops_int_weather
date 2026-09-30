@@ -24,6 +24,8 @@ dependencies = [
     "mlflow==3.16.0",
     "prometheus-fastapi-instrumentator>=8.1.0",
     "prometheus-client>=0.26.0",
+    "psycopg[binary]>=3.2",
+    "evidently>=0.7",
 ]
 
 [project.scripts]
@@ -72,6 +74,9 @@ filterwarnings = [
     "ignore::starlette.exceptions.StarletteDeprecationWarning",
     "ignore:The anyio.abc.BlockingPortal alias is deprecated:DeprecationWarning",
     "ignore:Unverified HTTPS request is being made:urllib3.exceptions.InsecureRequestWarning",
+    "ignore:invalid value encountered in divide:RuntimeWarning",
+    "ignore::DeprecationWarning:evidently",
+    "ignore::DeprecationWarning:litestar",
 ]
 markers = [
     "gateway: live TLS/429 checks against a running nginx (make test-gateway)",
