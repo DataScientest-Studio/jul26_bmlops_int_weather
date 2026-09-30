@@ -220,6 +220,8 @@ def compare_models(
         "promoted": promote,
         "decision": decision,
     }
+    comparison_path = metrics_path.parent / "comparison.json"
+    comparison_path.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     print(
         f"Compare: {decision} "
         f"({settings.mlflow_primary_metric}={candidate_score:.4f}, "

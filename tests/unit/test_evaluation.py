@@ -25,7 +25,14 @@ def _write_processed(tmp_path, features: pd.DataFrame, labels: pd.DataFrame) -> 
     manifest = build_processed_manifest(
         tmp_path,
         parent_sha256="rawsha",
-        split={},
+        split={
+            "train_start": "2025-01-01",
+            "validation_start": "2025-07-30",
+            "test_end": "2025-12-31",
+            "training_window_days": 180,
+            "validation_window_days": 90,
+            "test_window_days": 90,
+        },
     )
     write_processed_manifest(manifest, tmp_path / "manifest.json")
     return manifest
@@ -58,6 +65,9 @@ def test_evaluate_model_records_model_and_dataset_hashes(tmp_path, monkeypatch) 
     assert payload["model_sha256"] == hash_file(model_path, "sha256")
     assert payload["dataset_sha256"] == manifest["sha256"]
     assert payload["run_id"] == "run-1"
+    assert payload["split"] == manifest["split"]
+    assert payload["candidate_recall"] == payload["validation_recall"]
+    assert payload["candidate_roc_auc"] == payload["validation_roc_auc"]
     assert "validation_roc_auc" in payload
 
 

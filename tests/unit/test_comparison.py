@@ -103,6 +103,10 @@ def test_first_model_is_promoted_when_recall_passes(tmp_path, monkeypatch) -> No
 
     assert result["promoted"] is True
     assert result["decision"] == "promoted"
+    assert result["current_best"] is None
+    comparison_payload = json.loads((tmp_path / "comparison.json").read_text(encoding="utf-8"))
+    assert comparison_payload["candidate_recall"] == 0.76
+    assert comparison_payload["decision"] == "promoted"
     assert (tmp_path / "best_model.joblib").read_bytes() == b"model"
     assert fake.tags[("weather-rainfall-classifier", "1", "stage")] == "champion"
     assert fake.aliases[("weather-rainfall-classifier", "champion")] == "1"
@@ -125,6 +129,7 @@ def test_first_model_is_rejected_when_recall_is_below_guardrail(tmp_path, monkey
 
     assert result["promoted"] is False
     assert result["decision"] == "rejected_recall"
+    assert result["candidate_recall"] == 0.70
     assert not (tmp_path / "best_model.joblib").exists()
     assert fake.aliases == {}
     assert fake.tags[("weather-rainfall-classifier", "1", "stage")] == "candidate"
