@@ -136,6 +136,7 @@ airflow-reset:
 	cd airflow && docker compose --env-file .env --env-file ../.env down -v
 
 # Host runner. Writes reports/evidently/feature_drift.html. ARGS='--simulate' to inject drift.
+# singapore: ARGS='--current-path data/raw/weatherSingapore_current.csv'
 evidently:
 	$(LOCAL_ENV) uv run python -m weather_mlops.monitoring.drift $(ARGS)
 
