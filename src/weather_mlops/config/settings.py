@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     train_metrics_path: Path = PROJECT_ROOT / "reports" / "metrics" / "train.json"
     validation_metrics_path: Path = PROJECT_ROOT / "reports" / "metrics" / "validation.json"
     evaluation_metrics_path: Path = PROJECT_ROOT / "reports" / "metrics" / "evaluation.json"
+    evidently_reports_dir: Path = PROJECT_ROOT / "reports" / "evidently"
 
     # Supabase. Local .env only needs SUPABASE_URL + SUPABASE_KEY.
     # S3 keys and API basic auth come from Vault when they are not already set.
@@ -43,8 +44,13 @@ class Settings(BaseSettings):
     supabase_weather_table: str = "weather_observations"
     supabase_dataset_versions_table: str = "dataset_versions"
     supabase_ingestion_batches_table: str = "ingestion_batches"
+    supabase_model_versions_table: str = "model_versions"
+    supabase_predictions_table: str = "predictions"
+    supabase_drift_reports_table: str = "drift_reports"
     supabase_datasets_bucket: str = "weather-mlops-dvc"
     supabase_mlflow_bucket: str = "weather-mlops-mlflow"
+    # Direct or session-mode Postgres URI (port 5432) for DDL. Vault name SUPABASE_DB_URL.
+    supabase_db_url: str | None = None
 
     # DVC remote backed by Supabase Storage's S3-compatible API.
     dvc_remote_name: str = "supabase"

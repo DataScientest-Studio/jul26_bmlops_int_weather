@@ -11,6 +11,7 @@ from mlflow.exceptions import MlflowException
 from mlflow.tracking import MlflowClient
 
 from weather_mlops.config.settings import settings
+from weather_mlops.data.database import catalog_registered_model
 from weather_mlops.data.manifest import verify_processed_manifest
 from weather_mlops.data.versioning import hash_file
 from weather_mlops.models.tracking import load_mlflow_run_metadata
@@ -119,9 +120,31 @@ def _load_champion(client: MlflowClient):
         raise
 
 
+def _catalog_model_version(
+    *,
+    run_metadata: dict[str, Any],
+    metrics: dict[str, float],
+    payload: dict[str, Any],
+    stage: str,
+    run: Any,
+    catalog_client: Any | None,
+) -> None:
+    catalog_registered_model(
+        run_id=run_metadata["run_id"],
+        model_version=run_metadata.get("model_version"),
+        model_uri=run_metadata.get("model_uri"),
+        dataset_sha256=payload.get("dataset_sha256") or _current_dataset_sha256(),
+        params=dict(getattr(run.data, "params", None) or {}),
+        metrics=metrics,
+        stage=stage,
+        client=catalog_client,
+    )
+
+
 def compare_models(
     metrics_path: Path | None = None,
     model_source_path: Path | None = None,
+    catalog_client: Any | None = None,
 ) -> dict:
     """Keep champion unless the candidate has higher ROC-AUC and recall ≥ 0.75."""
     metrics_path = Path(metrics_path or settings.validation_metrics_path)
@@ -177,6 +200,15 @@ def compare_models(
             decision = "rejected_recall"
         else:
             decision = "kept_previous"
+
+    _catalog_model_version(
+        run_metadata=run_metadata,
+        metrics=metrics,
+        payload=payload,
+        stage="champion" if promote else "candidate",
+        run=run,
+        catalog_client=catalog_client,
+    )
 
     result = {
         "run_id": run_metadata["run_id"],

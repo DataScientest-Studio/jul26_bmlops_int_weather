@@ -90,6 +90,7 @@ target/
 !/models/*.dvc
 /reports/metrics/*
 !/reports/metrics/*.dvc
+/reports/evidently/
 
 # Mac OS-specific storage files
 .DS_Store

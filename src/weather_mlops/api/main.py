@@ -1,10 +1,12 @@
 import difflib
 import os
 import secrets
+import time
 from contextlib import asynccontextmanager
 from datetime import date
 from functools import lru_cache
 from typing import Literal
+from uuid import uuid4
 
 import pandas as pd
 from fastapi import Depends, FastAPI, HTTPException, status
@@ -21,6 +23,7 @@ from weather_mlops.api.metrics import (
     model_training_total,
 )
 from weather_mlops.config.settings import settings
+from weather_mlops.data.database import log_serving_prediction
 from weather_mlops.data.open_meteo import (
     OpenMeteoError,
     WeatherLocation,
@@ -173,6 +176,7 @@ class PredictionInput(LocationBase):
     temp_9am: float | None = Field(default=None, ge=-20, le=60)
     temp_3pm: float | None = Field(default=None, ge=-20, le=60)
     rain_today: Literal["Yes", "No"] | None = None
+    observation_date: date | None = None
 
     @model_validator(mode="after")
     def check_minimum_values(self):
@@ -185,7 +189,7 @@ class PredictionInput(LocationBase):
         to predict if it's going to rain tomorrow
 
         """
-        dict_values = self.model_dump()
+        dict_values = self.model_dump(exclude={"observation_date"})
         count_filled = sum(1 for value in dict_values.values() if value is not None)
         if count_filled < 4:
             raise ValueError("At least location and 3 weather values must be provided")
@@ -325,11 +329,23 @@ def predict_endpoint(
     and whatever weather features were provided.
     """
     raw_dict = features.model_dump()
+    observation_date = raw_dict.pop("observation_date", None)
     converted_dict = {convert(key): value for key, value in raw_dict.items()}
+    started = time.perf_counter()
     try:
-        return predict(converted_dict)
+        result = predict(converted_dict)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=f"Required model not found: {e}.") from e
+    log_serving_prediction(
+        endpoint="predict",
+        features=converted_dict,
+        result=result,
+        observation_date=str(observation_date or date.today()),
+        location=converted_dict.get("Location"),
+        latency_ms=int((time.perf_counter() - started) * 1000),
+        request_id=str(uuid4()),
+    )
+    return result
 
 
 @app.post("/train", response_model=TrainOutput)
@@ -399,11 +415,11 @@ def predict_live_endpoint(
     df = df.drop(columns=["Date", "RainTomorrow"])
     records = df.to_dict(orient="records")
     features_dict = records[0]
+    started = time.perf_counter()
     try:
         result = predict(features_dict)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=f"Required model not found: {e}.") from e
-
     model_predictions_total.labels(
         location=location.location,
         rain_tomorrow=str(result["rain_tomorrow"]),
@@ -421,6 +437,15 @@ def predict_live_endpoint(
         source=model["source"] or "unknown",
     ).set(1)
 
+    log_serving_prediction(
+        endpoint="live_data",
+        features=features_dict,
+        result=result,
+        observation_date=str(date.today()),
+        location=str(features_dict.get("Location") or location.location),
+        latency_ms=int((time.perf_counter() - started) * 1000),
+        request_id=str(uuid4()),
+    )
     return result
 
 

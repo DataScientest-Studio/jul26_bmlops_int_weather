@@ -14,3 +14,4 @@ supabase==2.31.0
 mlflow==3.16.0
 prometheus-client==0.26.0
 prometheus-fastapi-instrumentator==8.1.0
+evidently==0.7.23

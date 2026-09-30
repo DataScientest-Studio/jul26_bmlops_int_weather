@@ -63,6 +63,7 @@ def test_hydrate_runtime_secrets_fills_missing_settings_from_vault(monkeypatch) 
     monkeypatch.setattr(settings, "aws_secret_access_key", None)
     monkeypatch.setattr(settings, "api_auth_user", None)
     monkeypatch.setattr(settings, "api_auth_password", None)
+    monkeypatch.setattr(settings, "supabase_db_url", None)
     for env_name, _attr in VAULT_SETTINGS:
         monkeypatch.delenv(env_name, raising=False)
 
@@ -75,6 +76,16 @@ def test_hydrate_runtime_secrets_fills_missing_settings_from_vault(monkeypatch) 
     assert settings.api_auth_password == "vault-API_AUTH_PASSWORD"
     assert environ["API_AUTH_USER"] == "vault-API_AUTH_USER"
     assert environ["API_AUTH_PASSWORD"] == "vault-API_AUTH_PASSWORD"
+    assert settings.supabase_db_url == "vault-SUPABASE_DB_URL"
+
+
+def test_hydrate_runtime_secrets_can_load_database_url(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "supabase_db_url", None)
+    monkeypatch.delenv("SUPABASE_DB_URL", raising=False)
+
+    hydrate_runtime_secrets(fetcher=lambda name: f"vault-{name}", names=("SUPABASE_DB_URL",))
+
+    assert settings.supabase_db_url == "vault-SUPABASE_DB_URL"
 
 
 def test_hydrate_runtime_secrets_can_limit_names(monkeypatch) -> None:
@@ -124,3 +135,54 @@ def test_hydrate_runtime_secrets_requires_named_secrets(monkeypatch) -> None:
             names=("API_AUTH_USER",),
             required=("API_AUTH_USER",),
         )
+
+
+class _FakeRpc:
+    def __init__(self, calls: list) -> None:
+        self.calls = calls
+
+    def rpc(self, name: str, params: dict) -> "_FakeRpc":
+        self.calls.append((name, params))
+        return self
+
+    def execute(self) -> object:
+        return self
+
+
+def test_put_app_secret_calls_rpc_with_name_and_value() -> None:
+    from weather_mlops.security.vault import put_app_secret
+
+    calls: list = []
+    put_app_secret(
+        "SUPABASE_DB_URL",
+        "postgresql://postgres:secret@db.example.supabase.co:5432/postgres",
+        client=_FakeRpc(calls),
+    )
+
+    assert calls == [
+        (
+            "put_app_secret",
+            {
+                "secret_name": "SUPABASE_DB_URL",
+                "secret_value": "postgresql://postgres:secret@db.example.supabase.co:5432/postgres",
+            },
+        )
+    ]
+
+
+def test_put_app_secret_rejects_unknown_names() -> None:
+    from weather_mlops.security.vault import put_app_secret
+
+    with pytest.raises(VaultError, match="Unknown secret"):
+        put_app_secret("NOT_A_SECRET", "x", client=_FakeRpc([]))
+
+
+def test_put_app_secret_raises_when_rpc_fails() -> None:
+    from weather_mlops.security.vault import put_app_secret
+
+    class Boom:
+        def rpc(self, *_args, **_kwargs):
+            raise RuntimeError("network down")
+
+    with pytest.raises(VaultError, match="Vault RPC failed while writing"):
+        put_app_secret("SUPABASE_DB_URL", "postgresql://example", client=Boom())

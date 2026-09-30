@@ -1,5 +1,7 @@
+import logging
 from collections.abc import Iterable
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -196,3 +198,156 @@ def store_ingestion_batch(
         },
         on_conflict="batch_date,sha256",
     ).execute()
+
+
+def feature_schema_from_csv(path: Path) -> dict[str, Any] | None:
+    """Column names and dtypes from the champion training matrix, not the rows."""
+
+    csv_path = Path(path)
+    if not csv_path.exists():
+        return None
+    frame = pd.read_csv(csv_path, nrows=5)
+    return {
+        "columns": [str(column) for column in frame.columns],
+        "dtypes": {str(column): str(dtype) for column, dtype in frame.dtypes.items()},
+    }
+
+
+def store_model_version(
+    payload: dict[str, Any],
+    client: Client | None = None,
+) -> None:
+    """Upsert a compare/promote row. Unique key is mlflow_run_id.
+
+    A new champion demotes other catalog rows still tagged champion.
+    Skip when neither a client nor Supabase credentials are available.
+    """
+
+    if client is None and not (settings.supabase_url and settings.supabase_key):
+        return
+    supabase = client or get_supabase_client()
+    row = {key: value for key, value in payload.items() if value is not None}
+    supabase.table(settings.supabase_model_versions_table).upsert(
+        row,
+        on_conflict="mlflow_run_id",
+    ).execute()
+    run_id = row.get("mlflow_run_id")
+    if row.get("stage") != "champion" or not run_id:
+        return
+    supabase.table(settings.supabase_model_versions_table).update({"stage": "previous"}).eq(
+        "stage", "champion"
+    ).neq("mlflow_run_id", run_id).execute()
+
+
+def catalog_registered_model(
+    *,
+    run_id: str,
+    model_version: str | None,
+    model_uri: str | None,
+    dataset_sha256: str | None = None,
+    params: dict[str, Any] | None = None,
+    metrics: dict[str, Any] | None = None,
+    stage: str = "candidate",
+    client: Client | None = None,
+) -> None:
+    """Mirror an MLflow-registered model into Postgres. Blobs stay in Storage."""
+
+    version = str(model_version) if model_version is not None else None
+    uri = model_uri or (f"models:/{settings.mlflow_model_name}/{version}" if version else None)
+    store_model_version(
+        {
+            "mlflow_run_id": run_id,
+            "mlflow_model_version": version,
+            "mlflow_model_uri": uri,
+            "artifact_path": uri,
+            "dataset_sha256": dataset_sha256,
+            "name": settings.mlflow_model_name,
+            "stage": stage,
+            "metrics": metrics or {},
+            "params": params or {},
+            "feature_schema": feature_schema_from_csv(settings.x_train_path),
+        },
+        client=client,
+    )
+
+
+def lookup_model_version_id(
+    serving: dict[str, Any] | None,
+    client: Client,
+) -> int | None:
+    serving = serving or {}
+    name = serving.get("name") or settings.mlflow_model_name
+    version = serving.get("version")
+    table = settings.supabase_model_versions_table
+    if version:
+        response = (
+            client.table(table)
+            .select("id")
+            .eq("name", name)
+            .eq("mlflow_model_version", str(version))
+            .limit(1)
+            .execute()
+        )
+        rows = response.data or []
+        if rows:
+            return rows[0].get("id")
+    response = (
+        client.table(table).select("id").eq("name", name).eq("stage", "champion").limit(1).execute()
+    )
+    rows = response.data or []
+    if not rows:
+        return None
+    return rows[0].get("id")
+
+
+def store_prediction(
+    payload: dict[str, Any],
+    client: Client | None = None,
+) -> None:
+    if client is None and not (settings.supabase_url and settings.supabase_key):
+        return
+    supabase = client or get_supabase_client()
+    row = {key: value for key, value in payload.items() if value is not None}
+    supabase.table(settings.supabase_predictions_table).insert(row).execute()
+
+
+def log_serving_prediction(
+    *,
+    endpoint: str,
+    features: dict[str, Any],
+    result: dict[str, Any],
+    observation_date: str | None = None,
+    location: str | None = None,
+    latency_ms: int | None = None,
+    request_id: str | None = None,
+    client: Client | None = None,
+) -> None:
+    """Insert one serving row. Never raises: a catalog miss must not 500 /predict."""
+
+    try:
+        if client is None and not (settings.supabase_url and settings.supabase_key):
+            return
+        supabase = client or get_supabase_client()
+        serving = result.get("model") if isinstance(result.get("model"), dict) else {}
+        predicted = result.get("rain_tomorrow")
+        predicted_class = None
+        if predicted is True:
+            predicted_class = "Yes"
+        elif predicted is False:
+            predicted_class = "No"
+        store_prediction(
+            {
+                "model_version_id": lookup_model_version_id(serving, supabase),
+                "features": features,
+                "predicted_class": predicted_class,
+                "probability": result.get("probability"),
+                "observation_date": observation_date,
+                "location": location,
+                "endpoint": endpoint,
+                "latency_ms": latency_ms,
+                "request_id": request_id,
+            },
+            client=supabase,
+        )
+    except Exception:
+        logging.getLogger(__name__).exception("predictions catalog write failed")

@@ -12,6 +12,7 @@ from mlflow.tracking import MlflowClient
 
 from weather_mlops.config.settings import settings
 from weather_mlops.data.catalog import current_git_commit
+from weather_mlops.data.database import catalog_registered_model
 
 # MLflow 3.16 skops refuses these types unless they are explicit.
 SKOPS_TRUSTED_TYPES = [
@@ -176,6 +177,15 @@ def log_training_run(
             model_version=str(model_version.version),
             model_uri=model_info.model_uri,
             model_sha256=model_sha256,
+        )
+        catalog_registered_model(
+            run_id=run.info.run_id,
+            model_version=str(model_version.version),
+            model_uri=model_info.model_uri,
+            dataset_sha256=dataset_sha256,
+            params=params,
+            metrics={f"train_{name}": float(value) for name, value in metrics.items()},
+            stage="candidate",
         )
         print(
             f"Registered model: {settings.mlflow_model_name}\n"

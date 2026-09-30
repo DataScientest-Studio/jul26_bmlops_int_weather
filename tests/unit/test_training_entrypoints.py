@@ -31,6 +31,8 @@ def test_makefile_runtime_uses_compose():
     assert "GATEWAY_URL=https://nginx" in makefile
     assert "API_URL ?= https://nginx" in makefile
     assert "\ndvc-pull:" in makefile
+    assert "\nevidently:" in makefile
+    assert "weather_mlops.monitoring.drift" in makefile
     assert "\nmlflow:" in makefile
     assert "with_vault_env.py --s3" in makefile
     assert "--wait mlflow" in makefile
