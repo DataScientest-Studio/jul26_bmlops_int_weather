@@ -259,8 +259,7 @@ def test_compare_rejects_stale_processed_csvs(tmp_path, monkeypatch) -> None:
     manifest = build_processed_manifest(
         tmp_path,
         parent_sha256="rawsha",
-        train_fraction=0.7,
-        validation_fraction=0.15,
+        split={},
     )
     write_processed_manifest(manifest, tmp_path / "manifest.json")
     _patch_compare(
@@ -329,8 +328,7 @@ def test_compare_writes_champion_row_to_model_versions(tmp_path, monkeypatch) ->
     manifest = build_processed_manifest(
         tmp_path,
         parent_sha256="rawsha",
-        train_fraction=0.7,
-        validation_fraction=0.15,
+        split={},
     )
     write_processed_manifest(manifest, tmp_path / "manifest.json")
     _patch_compare(

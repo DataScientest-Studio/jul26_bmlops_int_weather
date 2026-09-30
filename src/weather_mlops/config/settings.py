@@ -66,8 +66,9 @@ class Settings(BaseSettings):
 
     # Model
     random_state: int = 42
-    train_fraction: float = 0.7
-    validation_fraction: float = 0.15
+    training_window_days: int | None = 1825
+    validation_window_days: int = 90
+    test_window_days: int = 90
 
     # MLflow. Unset = skip tracking. Compose sets http://mlflow:8080 on the API.
     mlflow_tracking_uri: str | None = None

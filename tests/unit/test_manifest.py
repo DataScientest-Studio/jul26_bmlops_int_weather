@@ -9,6 +9,20 @@ from weather_mlops.data.manifest import (
 )
 
 
+def _split_metadata() -> dict[str, str | int | None]:
+    return {
+        "train_start": "2025-01-01",
+        "train_end": "2025-07-29",
+        "validation_start": "2025-07-30",
+        "validation_end": "2025-10-27",
+        "test_start": "2025-10-28",
+        "test_end": "2025-12-31",
+        "training_window_days": 210,
+        "validation_window_days": 90,
+        "test_window_days": 90,
+    }
+
+
 def _write_splits(tmp_path) -> None:
     for name in PROCESSED_FILES:
         (tmp_path / name).write_text(f"{name}\n", encoding="utf-8")
@@ -21,14 +35,15 @@ def test_processed_manifest_hashes_all_six_splits(tmp_path) -> None:
     manifest = build_processed_manifest(
         tmp_path,
         parent_sha256="rawsha",
-        train_fraction=0.7,
-        validation_fraction=0.15,
+        split=_split_metadata(),
     )
     path = write_processed_manifest(manifest, tmp_path / "manifest.json")
 
     assert set(manifest["files"]) == set(PROCESSED_FILES)
     assert manifest["parent_sha256"] == "rawsha"
     assert manifest["preprocessing_version"]
+    assert manifest["split"]["validation_window_days"] == 90
+    assert manifest["split"]["test_end"] == "2025-12-31"
     loaded = read_processed_manifest(path)
     assert loaded is not None
     assert loaded["sha256"] == manifest["sha256"]
@@ -39,14 +54,25 @@ def test_verify_processed_manifest_rejects_stale_csv(tmp_path) -> None:
     manifest = build_processed_manifest(
         tmp_path,
         parent_sha256="rawsha",
-        train_fraction=0.7,
-        validation_fraction=0.15,
+        split=_split_metadata(),
     )
     write_processed_manifest(manifest, tmp_path / "manifest.json")
     (tmp_path / "X_train.csv").write_text("tampered\n", encoding="utf-8")
 
     with pytest.raises(ValueError, match="do not match"):
         verify_processed_manifest(tmp_path)
+
+
+def test_verify_processed_manifest_preserves_split_provenance(tmp_path) -> None:
+    _write_splits(tmp_path)
+    manifest = build_processed_manifest(
+        tmp_path,
+        parent_sha256="rawsha",
+        split=_split_metadata(),
+    )
+    write_processed_manifest(manifest, tmp_path / "manifest.json")
+
+    assert verify_processed_manifest(tmp_path)["split"] == manifest["split"]
 
 
 def test_verify_processed_manifest_requires_the_json_file(tmp_path) -> None:

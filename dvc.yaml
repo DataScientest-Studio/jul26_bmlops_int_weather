@@ -20,7 +20,11 @@ stages:
       - data/metadata/weatherAUS.json
 
   preprocess:
-    cmd: python -m weather_mlops.data.preprocess -t ${data.train_fraction} -v ${data.validation_fraction}
+    cmd: >-
+      python -m weather_mlops.data.preprocess
+      --training-window-days ${data.training_window_days}
+      --validation-window-days ${data.validation_window_days}
+      --test-window-days ${data.test_window_days}
     deps:
       - data/raw/weatherAUS_current.csv
       - src/weather_mlops/data/preprocess.py
@@ -29,8 +33,9 @@ stages:
       - src/weather_mlops/data/versioning.py
       - src/weather_mlops/config/settings.py
     params:
-      - data.train_fraction
-      - data.validation_fraction
+      - data.training_window_days
+      - data.validation_window_days
+      - data.test_window_days
     outs:
       - data/processed/X_train.csv
       - data/processed/X_validation.csv

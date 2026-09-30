@@ -25,8 +25,7 @@ def _write_processed(tmp_path, features: pd.DataFrame, labels: pd.DataFrame) -> 
     manifest = build_processed_manifest(
         tmp_path,
         parent_sha256="rawsha",
-        train_fraction=0.7,
-        validation_fraction=0.15,
+        split={},
     )
     write_processed_manifest(manifest, tmp_path / "manifest.json")
     return manifest
