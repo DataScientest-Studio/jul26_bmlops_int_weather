@@ -10,6 +10,15 @@ stages:
     outs:
       - data/raw/weatherAUS_current.csv
 
+  merge_singapore:
+    cmd: python scripts/merge_singapore.py --input-dir data/raw/open_meteo_Singapore --output data/raw/weatherSingapore_current.csv
+    deps:
+      - data/raw/open_meteo_Singapore
+      - scripts/merge_singapore.py
+      - src/weather_mlops/data/weatheraus_schema.py
+    outs:
+      - data/raw/weatherSingapore_current.csv
+
   version_raw:
     cmd: python -m weather_mlops.data.versioning
     deps:

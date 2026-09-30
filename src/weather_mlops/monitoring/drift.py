@@ -229,6 +229,7 @@ def run_drift_job(
     simulate: bool = False,
     catalog_client: Any | None = None,
     reference_path: Path | None = None,
+    current_path: Path | None = None,
 ) -> dict[str, Any]:
     path = Path(reference_path or settings.x_train_path)
     if not path.exists():
@@ -238,6 +239,10 @@ def run_drift_job(
     if simulate:
         current = simulate_feature_drift(reference)
         current_label = "simulated"
+    elif current_path:
+        # compare with a real csv, for exemple singapore
+        current = _cap_frame(pd.read_csv(current_path))
+        current_label = str(current_path)
     else:
         serving_rows = load_serving_feature_rows(client=catalog_client)
         current = explode_prediction_features(serving_rows)
@@ -301,12 +306,17 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Shift Humidity3pm and Location on X_train instead of reading predictions.",
     )
+    parser.add_argument(
+        "--current-path",
+        type=Path,
+        help="CSV file to compare against X_train.",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    result = run_drift_job(simulate=args.simulate)
+    result = run_drift_job(simulate=args.simulate, current_path=args.current_path)
     print(json.dumps(result, indent=2, default=str))
     if result["feature_drift"]["drift_detected"]:
         print("Feature drift: WARNING (do not auto-retrain from this alone).")

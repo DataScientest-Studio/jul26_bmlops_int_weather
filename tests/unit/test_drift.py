@@ -166,3 +166,43 @@ def test_simulate_cli_writes_html(tmp_path: Path, monkeypatch) -> None:
     assert "Humidity3pm" in result["feature_drift"]["drifted_columns"]
     assert result["feature_drift"]["drift_detected"] is True
     assert result["performance"] is None
+
+
+
+def test_singapore_csv_is_drifted(tmp_path: Path, monkeypatch) -> None:
+    reference_path = tmp_path / "X_train.csv"
+    _sample_frame().to_csv(reference_path, index=False)
+
+    # fake rainy city with more humidty
+    rainy = _sample_frame()
+    rainy["Location"] = "Singapore"
+    rainy["Humidity3pm"] = rainy["Humidity3pm"] + 35
+    rainy["RainToday"] = "Yes"
+    current_path = tmp_path / "singapore.csv"
+    rainy.to_csv(current_path, index=False)
+
+    monkeypatch.setattr(drift.settings, "evidently_reports_dir", tmp_path / "reports")
+    monkeypatch.setattr(drift.settings, "supabase_url", None)
+    monkeypatch.setattr(drift.settings, "supabase_key", None)
+
+    result = drift.run_drift_job(reference_path=reference_path, current_path=current_path)
+
+    assert result["feature_drift"]["drift_detected"] is True
+    assert "Location" in result["feature_drift"]["drifted_columns"]
+    assert "Humidity3pm" in result["feature_drift"]["drifted_columns"]
+
+
+def test_real_singapore_csv_is_drifted(tmp_path: Path, monkeypatch) -> None:
+    x_train = Path("data/processed/X_train.csv")
+    singapore = Path("data/raw/weatherSingapore_current.csv")
+    # skip if the data is not downloded
+    if not x_train.exists() or not singapore.exists():
+        pytest.skip("data not available")
+
+    monkeypatch.setattr(drift.settings, "evidently_reports_dir", tmp_path / "reports")
+    monkeypatch.setattr(drift.settings, "supabase_url", None)
+    monkeypatch.setattr(drift.settings, "supabase_key", None)
+
+    result = drift.run_drift_job(reference_path=x_train, current_path=singapore)
+
+    assert result["feature_drift"]["drift_detected"] is True
