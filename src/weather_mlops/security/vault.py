@@ -18,7 +18,13 @@ S3_SETTINGS = (
     ("AWS_SECRET_ACCESS_KEY", "aws_secret_access_key"),
 )
 SCHEMA_SETTINGS = (("SUPABASE_DB_URL", "supabase_db_url"),)
-VAULT_SETTINGS = AUTH_SETTINGS + S3_SETTINGS + SCHEMA_SETTINGS
+MONITORING_SETTINGS = (
+    ("AIRFLOW_API_USER", "airflow_api_user"),
+    ("AIRFLOW_API_PASSWORD", "airflow_api_password"),
+    ("GF_SECURITY_ADMIN_USER", "gf_security_admin_user"),
+    ("GF_SECURITY_ADMIN_PASSWORD", "gf_security_admin_password"),
+)
+VAULT_SETTINGS = AUTH_SETTINGS + S3_SETTINGS + SCHEMA_SETTINGS + MONITORING_SETTINGS
 ALLOWED_SECRET_NAMES = {name for name, _attr in VAULT_SETTINGS}
 
 _client = None

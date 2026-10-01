@@ -138,8 +138,7 @@ def test_register_processed_snapshot_uses_combined_hash_and_uploads_csvs(tmp_pat
     manifest = build_processed_manifest(
         tmp_path,
         parent_sha256="rawsha",
-        train_fraction=0.7,
-        validation_fraction=0.15,
+        split={},
     )
     write_processed_manifest(manifest, tmp_path / "manifest.json")
     storage = FakeStorage()

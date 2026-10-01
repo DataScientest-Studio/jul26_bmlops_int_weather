@@ -1,6 +1,7 @@
 data:
-  train_fraction: 0.7
-  validation_fraction: 0.15
+  training_window_days: 1825
+  validation_window_days: 90
+  test_window_days: 90
 
 model:
   n_estimators: 250

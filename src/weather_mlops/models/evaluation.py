@@ -47,6 +47,13 @@ def _dataset_sha256(x_data_path: Path, y_data_path: Path) -> str:
     return digest.hexdigest()
 
 
+def _split_metadata(x_data_path: Path) -> dict[str, Any] | None:
+    manifest_path = x_data_path.parent / "manifest.json"
+    if not manifest_path.exists():
+        return None
+    return verify_processed_manifest(x_data_path.parent).get("split")
+
+
 def _evaluation_run_id() -> str | None:
     from weather_mlops.models.tracking import load_mlflow_run_metadata
 
@@ -93,19 +100,21 @@ def evaluate_model(
 
     run_id = _evaluation_run_id()
 
+    report = {
+        f"{split_name}_rows": len(X_data),
+        **{f"{split_name}_{name}": value for name, value in metrics.items()},
+        "model_sha256": hash_file(model_path, "sha256"),
+        "dataset_sha256": dataset_sha256,
+        "split": _split_metadata(x_data_path),
+        "run_id": run_id,
+    }
+    if split_name == "validation":
+        report["candidate_recall"] = metrics["recall"]
+        report["candidate_roc_auc"] = metrics["roc_auc"]
+
     metrics_output_path.parent.mkdir(parents=True, exist_ok=True)
     metrics_output_path.write_text(
-        json.dumps(
-            {
-                f"{split_name}_rows": len(X_data),
-                **{f"{split_name}_{name}": value for name, value in metrics.items()},
-                "model_sha256": hash_file(model_path, "sha256"),
-                "dataset_sha256": dataset_sha256,
-                "run_id": run_id,
-            },
-            indent=2,
-        )
-        + "\n",
+        json.dumps(report, indent=2) + "\n",
         encoding="utf-8",
     )
 

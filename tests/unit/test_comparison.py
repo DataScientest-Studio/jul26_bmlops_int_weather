@@ -49,6 +49,19 @@ class FakeClient:
     def set_registered_model_alias(self, name, alias, version):
         self.aliases[(name, alias)] = str(version)
 
+    def get_model_version(self, _name, _version):
+        return SimpleNamespace(run_id="run-1")
+
+    def list_artifacts(self, _run_id):
+        paths = {
+            "model",
+            "joblib/rain_classifier.joblib",
+            "metrics/train.json",
+            "dataset/manifest.json",
+            "lineage/release.json",
+        }
+        return [SimpleNamespace(path=path) for path in paths]
+
 
 def _metrics(model_path, **extra) -> str:
     payload = {
@@ -66,6 +79,20 @@ def _patch_compare(tmp_path, monkeypatch, metrics_text: str, metadata: dict, fak
     best_path = tmp_path / "best_model.joblib"
     if not model_path.exists():
         model_path.write_bytes(b"model")
+    metadata.setdefault(
+        "release",
+        {
+            "run_id": metadata["run_id"],
+            "model_version": metadata["model_version"],
+            "model_uri": metadata.get("model_uri", "models:/weather-rainfall-classifier/1"),
+            "artifact_uri": "runs:/run-1/model",
+            "model_sha256": hash_file(model_path, "sha256"),
+            "dataset_sha256": "dataset-sha",
+            "git_commit": "abc123",
+            "preprocessing_version": "2026.09.15",
+            "split": {},
+        },
+    )
     metrics = tmp_path / "validation.json"
     metrics.write_text(metrics_text, encoding="utf-8")
     monkeypatch.setattr(comparison.settings, "model_path", model_path)
@@ -103,6 +130,10 @@ def test_first_model_is_promoted_when_recall_passes(tmp_path, monkeypatch) -> No
 
     assert result["promoted"] is True
     assert result["decision"] == "promoted"
+    assert result["current_best"] is None
+    comparison_payload = json.loads((tmp_path / "comparison.json").read_text(encoding="utf-8"))
+    assert comparison_payload["candidate_recall"] == 0.76
+    assert comparison_payload["decision"] == "promoted"
     assert (tmp_path / "best_model.joblib").read_bytes() == b"model"
     assert fake.tags[("weather-rainfall-classifier", "1", "stage")] == "champion"
     assert fake.aliases[("weather-rainfall-classifier", "champion")] == "1"
@@ -125,6 +156,7 @@ def test_first_model_is_rejected_when_recall_is_below_guardrail(tmp_path, monkey
 
     assert result["promoted"] is False
     assert result["decision"] == "rejected_recall"
+    assert result["candidate_recall"] == 0.70
     assert not (tmp_path / "best_model.joblib").exists()
     assert fake.aliases == {}
     assert fake.tags[("weather-rainfall-classifier", "1", "stage")] == "candidate"
@@ -259,8 +291,7 @@ def test_compare_rejects_stale_processed_csvs(tmp_path, monkeypatch) -> None:
     manifest = build_processed_manifest(
         tmp_path,
         parent_sha256="rawsha",
-        train_fraction=0.7,
-        validation_fraction=0.15,
+        split={},
     )
     write_processed_manifest(manifest, tmp_path / "manifest.json")
     _patch_compare(
@@ -329,8 +360,7 @@ def test_compare_writes_champion_row_to_model_versions(tmp_path, monkeypatch) ->
     manifest = build_processed_manifest(
         tmp_path,
         parent_sha256="rawsha",
-        train_fraction=0.7,
-        validation_fraction=0.15,
+        split={},
     )
     write_processed_manifest(manifest, tmp_path / "manifest.json")
     _patch_compare(

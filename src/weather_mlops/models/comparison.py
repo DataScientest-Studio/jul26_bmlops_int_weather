@@ -14,6 +14,7 @@ from weather_mlops.config.settings import settings
 from weather_mlops.data.database import catalog_registered_model
 from weather_mlops.data.manifest import verify_processed_manifest
 from weather_mlops.data.versioning import hash_file
+from weather_mlops.models.release import verify_model_release
 from weather_mlops.models.tracking import load_mlflow_run_metadata
 
 
@@ -161,6 +162,10 @@ def compare_models(
     _require_matching_evaluation(payload, model_source_path, run_metadata)
     metrics = _numeric_metrics(payload)
     client = MlflowClient(tracking_uri=settings.mlflow_tracking_uri)
+    release = run_metadata.get("release")
+    if not isinstance(release, dict):
+        raise RuntimeError("mlflow_run.json has no verified release tuple. Retrain first.")
+    verify_model_release(release, client)
     run = client.get_run(run_metadata["run_id"])
     for name, value in metrics.items():
         client.log_metric(run.info.run_id, name, value)
@@ -220,6 +225,8 @@ def compare_models(
         "promoted": promote,
         "decision": decision,
     }
+    comparison_path = metrics_path.parent / "comparison.json"
+    comparison_path.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     print(
         f"Compare: {decision} "
         f"({settings.mlflow_primary_metric}={candidate_score:.4f}, "

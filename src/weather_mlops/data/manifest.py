@@ -26,8 +26,7 @@ def build_processed_manifest(
     output_dir: Path,
     *,
     parent_sha256: str | None,
-    train_fraction: float,
-    validation_fraction: float,
+    split: dict[str, Any] | None,
 ) -> dict[str, Any]:
     files: dict[str, dict[str, str | int]] = {}
     digest = hashlib.sha256()
@@ -43,7 +42,10 @@ def build_processed_manifest(
         }
         digest.update(f"{filename}:{sha256}".encode())
 
-    return {
+    if split is not None:
+        digest.update(json.dumps(split, sort_keys=True, separators=(",", ":")).encode())
+
+    manifest = {
         "dataset_name": "weatherAUS",
         "version_kind": "processed",
         "path": display_path(output_dir / "manifest.json"),
@@ -51,10 +53,11 @@ def build_processed_manifest(
         "preprocessing_version": PREPROCESS_VERSION,
         "parent_sha256": parent_sha256,
         "git_commit": current_git_commit(),
-        "train_fraction": train_fraction,
-        "validation_fraction": validation_fraction,
         "files": files,
     }
+    if split is not None:
+        manifest["split"] = split
+    return manifest
 
 
 def write_processed_manifest(manifest: dict[str, Any], path: Path | None = None) -> Path:
@@ -78,8 +81,7 @@ def verify_processed_manifest(
     current = build_processed_manifest(
         output_dir,
         parent_sha256=stored.get("parent_sha256"),
-        train_fraction=float(stored["train_fraction"]),
-        validation_fraction=float(stored["validation_fraction"]),
+        split=stored.get("split"),
     )
     if current["sha256"] != stored["sha256"]:
         raise ValueError(

@@ -280,6 +280,61 @@ groups:
           isPaused: false
           notification_settings:
             receiver: empty
+        - uid: model-retrain-requested
+          title: Delayed model performance requests retraining
+          condition: C
+          data:
+            - refId: A
+              relativeTimeRange:
+                from: 600
+                to: 0
+              datasourceUid: prometheus
+              model:
+                editorMode: code
+                expr: weather_model_retrain_requested == 1
+                instant: true
+                intervalMs: 1000
+                legendFormat: __auto
+                maxDataPoints: 43200
+                range: false
+                refId: A
+            - refId: C
+              queryType: expression
+              datasourceUid: __expr__
+              model:
+                conditions:
+                    - evaluator:
+                        params:
+                            - 0.5
+                        type: gt
+                      operator:
+                        type: and
+                      query:
+                        params:
+                            - C
+                      reducer:
+                        params: []
+                      type: query
+                datasource:
+                  type: __expr__
+                  uid: __expr__
+                expression: A
+                intervalMs: 1000
+                maxDataPoints: 43200
+                refId: C
+                type: threshold
+          noDataState: OK
+          execErrState: Error
+          for: 1m
+          annotations:
+            summary: Delayed labelled performance crossed the retraining guardrail.
+          labels:
+            severity: warning
+            action: retrain
+          isPaused: false
+          notification_settings:
+            receiver: airflow-retrain
+            repeat_interval: 24h
         - uid: model-rain-rate-unusual
           title: Rain prediction rate unusual
           condition: C
@@ -334,8 +389,6 @@ groups:
             summary: Share of rain predictions over the last 24h is below 5 percent or above 60 percent. Possible data drift.
           labels:
             severity: warning
-            action: retrain
           isPaused: false
           notification_settings:
-            receiver: airflow-retrain
-            repeat_interval: 24h
+            receiver: empty

@@ -30,8 +30,12 @@ def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
     # A supervised model cannot train on rows without a valid timestamp/target.
     df = df.dropna(subset=[DATE_COLUMN, TARGET_COLUMN])
-    df[TARGET_COLUMN] = df[TARGET_COLUMN].map({"No": 0, "Yes": 1})
+    if pd.api.types.is_numeric_dtype(df[TARGET_COLUMN]):
+        df[TARGET_COLUMN] = pd.to_numeric(df[TARGET_COLUMN], errors="coerce")
+    else:
+        df[TARGET_COLUMN] = df[TARGET_COLUMN].map({"No": 0, "Yes": 1})
     df = df.dropna(subset=[TARGET_COLUMN])
+    df = df[df[TARGET_COLUMN].isin([0, 1])]
     df[TARGET_COLUMN] = df[TARGET_COLUMN].astype(int)
 
     sort_columns = [DATE_COLUMN]
@@ -49,29 +53,20 @@ def split_features_target(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
 
 def temporal_train_validation_test_split(
     df: pd.DataFrame,
-    train_fraction: float = 0.7,
-    validation_fraction: float = 0.15,
+    *,
+    training_window_days: int | None = settings.training_window_days,
+    validation_window_days: int = settings.validation_window_days,
+    test_window_days: int = settings.test_window_days,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.Series, pd.Series, pd.Series]:
-    """Split observations chronologically to avoid future-to-past leakage."""
-
-    if not 0 < train_fraction < 1:
-        raise ValueError("train_fraction must be between 0 and 1.")
-    if not 0 <= validation_fraction < 1:
-        raise ValueError("validation_fraction must be between 0 and 1.")
-    if train_fraction + validation_fraction >= 1:
-        raise ValueError("train_fraction + validation_fraction must be less than 1.")
+    """Split whole dates chronologically, retaining only the configured windows."""
 
     cleaned = clean_dataframe(df)
-    unique_dates = list(cleaned[DATE_COLUMN].drop_duplicates().sort_values())
-    n_dates = len(unique_dates)
-    train_n = int(n_dates * train_fraction)
-    validation_n = int(n_dates * validation_fraction)
-    if train_n < 1 or validation_n < 1 or train_n + validation_n >= n_dates:
-        raise ValueError("Not enough distinct dates to form train, validation, and test splits.")
-
-    train_dates = set(unique_dates[:train_n])
-    validation_dates = set(unique_dates[train_n : train_n + validation_n])
-    test_dates = set(unique_dates[train_n + validation_n :])
+    train_dates, validation_dates, test_dates = _rolling_date_partitions(
+        cleaned,
+        training_window_days=training_window_days,
+        validation_window_days=validation_window_days,
+        test_window_days=test_window_days,
+    )
 
     train_df = cleaned[cleaned[DATE_COLUMN].isin(train_dates)]
     validation_df = cleaned[cleaned[DATE_COLUMN].isin(validation_dates)]
@@ -82,6 +77,77 @@ def temporal_train_validation_test_split(
     X_test, y_test = split_features_target(test_df)
 
     return X_train, X_validation, X_test, y_train, y_validation, y_test
+
+
+def build_split_metadata(
+    cleaned: pd.DataFrame,
+    *,
+    training_window_days: int | None,
+    validation_window_days: int,
+    test_window_days: int,
+) -> dict[str, str | int | None]:
+    """Describe the exact rolling date windows used for a processed split."""
+
+    train_dates, validation_dates, test_dates = _rolling_date_partitions(
+        cleaned,
+        training_window_days=training_window_days,
+        validation_window_days=validation_window_days,
+        test_window_days=test_window_days,
+    )
+
+    return {
+        "train_start": _date_string(train_dates[0]),
+        "train_end": _date_string(train_dates[-1]),
+        "validation_start": _date_string(validation_dates[0]),
+        "validation_end": _date_string(validation_dates[-1]),
+        "test_start": _date_string(test_dates[0]),
+        "test_end": _date_string(test_dates[-1]),
+        "training_window_days": training_window_days,
+        "validation_window_days": validation_window_days,
+        "test_window_days": test_window_days,
+    }
+
+
+def _rolling_date_partitions(
+    cleaned: pd.DataFrame,
+    *,
+    training_window_days: int | None,
+    validation_window_days: int,
+    test_window_days: int,
+) -> tuple[list[pd.Timestamp], list[pd.Timestamp], list[pd.Timestamp]]:
+    if training_window_days is not None and training_window_days < 1:
+        raise ValueError("training_window_days must be at least 1 or None.")
+    if validation_window_days < 1:
+        raise ValueError("validation_window_days must be at least 1.")
+    if test_window_days < 1:
+        raise ValueError("test_window_days must be at least 1.")
+
+    unique_dates = list(cleaned[DATE_COLUMN].drop_duplicates().sort_values())
+    minimum_dates = (
+        validation_window_days
+        + test_window_days
+        + (training_window_days if training_window_days is not None else 1)
+    )
+    if len(unique_dates) < minimum_dates:
+        raise ValueError(
+            "Not enough distinct dates to form requested rolling windows "
+            f"(requires {minimum_dates} distinct dates)."
+        )
+
+    test_dates = unique_dates[-test_window_days:]
+    validation_start = len(unique_dates) - test_window_days - validation_window_days
+    validation_dates = unique_dates[validation_start : len(unique_dates) - test_window_days]
+    available_train_dates = unique_dates[:validation_start]
+    train_dates = (
+        available_train_dates
+        if training_window_days is None
+        else available_train_dates[-training_window_days:]
+    )
+    return train_dates, validation_dates, test_dates
+
+
+def _date_string(value: pd.Timestamp) -> str:
+    return value.date().isoformat()
 
 
 def build_preprocessor(X: pd.DataFrame) -> ColumnTransformer:
@@ -122,13 +188,17 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Preprocess weatherAUS.csv for modeling.")
     parser.add_argument("--input", type=Path, default=settings.raw_data_path)
     parser.add_argument("--output-dir", type=Path, default=settings.processed_data_dir)
-    parser.add_argument("-t", "--train-fraction", type=float, default=settings.train_fraction)
     parser.add_argument(
-        "-v",
-        "--validation-fraction",
-        type=float,
-        default=settings.validation_fraction,
+        "--training-window-days",
+        type=int,
+        default=settings.training_window_days,
     )
+    parser.add_argument(
+        "--validation-window-days",
+        type=int,
+        default=settings.validation_window_days,
+    )
+    parser.add_argument("--test-window-days", type=int, default=settings.test_window_days)
     return parser.parse_args()
 
 
@@ -138,12 +208,20 @@ def main() -> None:
 
     args = parse_args()
     dataframe = pd.read_csv(args.input)
+    cleaned = clean_dataframe(dataframe)
     X_train, X_validation, X_test, y_train, y_validation, y_test = (
         temporal_train_validation_test_split(
-            dataframe,
-            train_fraction=args.train_fraction,
-            validation_fraction=args.validation_fraction,
+            cleaned,
+            training_window_days=args.training_window_days,
+            validation_window_days=args.validation_window_days,
+            test_window_days=args.test_window_days,
         )
+    )
+    split = build_split_metadata(
+        cleaned,
+        training_window_days=args.training_window_days,
+        validation_window_days=args.validation_window_days,
+        test_window_days=args.test_window_days,
     )
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -165,8 +243,7 @@ def main() -> None:
     manifest = build_processed_manifest(
         args.output_dir,
         parent_sha256=parent_sha256,
-        train_fraction=args.train_fraction,
-        validation_fraction=args.validation_fraction,
+        split=split,
     )
     manifest_path = write_processed_manifest(manifest, args.output_dir / "manifest.json")
     print(f"Wrote processed manifest {manifest_path} sha256={manifest['sha256']}")

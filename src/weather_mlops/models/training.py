@@ -159,6 +159,7 @@ def _train_model_unlocked(
                 "parent_sha256": manifest.get("parent_sha256"),
                 "preprocessing_version": manifest.get("preprocessing_version"),
                 "preprocess_git_commit": manifest.get("git_commit"),
+                "split": manifest.get("split"),
                 "git_commit": current_git_commit(),
                 **{f"train_{name}": value for name, value in metrics.items()},
             },

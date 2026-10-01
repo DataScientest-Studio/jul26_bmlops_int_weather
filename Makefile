@@ -20,6 +20,8 @@ export GIT_COMMIT
 	load-db register-dataset airflow-up airflow-down airflow-reset monitoring \
 	supabase-migrate supabase-verify vault-put evidently
 
+.PHONY: reconcile-model-catalog
+
 # --- DVC stays on the host (Git pointers + local cache). Everything else is Compose. ---
 
 dvc-check-env:
@@ -69,7 +71,7 @@ mlflow:
 	$(LOCAL_ENV) uv run python scripts/with_vault_env.py --s3 $(COMPOSE) --profile mlflow up -d --build --wait mlflow
 
 monitoring: serve
-	$(COMPOSE) --profile monitoring up -d prometheus grafana
+	$(LOCAL_ENV) uv run python scripts/with_vault_env.py --monitoring $(COMPOSE) --profile monitoring up -d prometheus grafana
 
 down:
 	$(COMPOSE) --profile gateway --profile streamlit --profile test --profile mlflow --profile monitoring down --remove-orphans
@@ -94,6 +96,9 @@ pipeline: train
 
 compare:
 	$(COMPOSE) run --rm --no-deps --entrypoint python api -m weather_mlops.models.comparison
+
+reconcile-model-catalog:
+	$(LOCAL_ENV) uv run python -m weather_mlops.models.reconcile_catalog $(if $(RUN_ID),--run-id $(RUN_ID))
 
 train: serve
 	$(COMPOSE) run --rm --no-deps -e API_URL="$(API_URL)" -e TRAIN_PARAMS='$(TRAIN_PARAMS)' --entrypoint python api scripts/train_via_api.py
@@ -127,7 +132,7 @@ register-dataset:
 	$(COMPOSE) run --rm --no-deps --build --entrypoint python api scripts/register_dataset_version.py $(ARGS)
 
 airflow-up:
-	cd airflow && docker compose --env-file .env --env-file ../.env up -d
+	$(LOCAL_ENV) uv run python scripts/with_vault_env.py --monitoring sh -c 'cd airflow && docker compose --env-file .env --env-file ../.env up -d'
 
 airflow-down:
 	cd airflow && docker compose --env-file .env --env-file ../.env down
