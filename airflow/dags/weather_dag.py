@@ -71,6 +71,8 @@ with DAG(
         environment={
             "MLFLOW_TRACKING_URI": "http://mlflow:8080",
             "PUSHGATEWAY_URL": "http://pushgateway:9091",
+            "SUPABASE_URL": os.environ.get("SUPABASE_URL"),
+            "SUPABASE_KEY": os.environ.get("SUPABASE_KEY"),
         },
         mount_tmp_dir=False,
     )

@@ -1,7 +1,7 @@
+import json
 from pathlib import Path
 
 import yaml
-
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -36,3 +36,33 @@ def test_only_delayed_performance_gate_can_request_retraining() -> None:
 
     assert "weather_model_retrain_requested" in query
     assert retrain["notification_settings"]["receiver"] == "airflow-retrain"
+
+
+def test_weather_model_dashboard_includes_evidently_batch_metrics() -> None:
+    dashboard = json.loads(
+        (ROOT / "docker/grafana/dashboards/grafana_model.json").read_text(encoding="utf-8")
+    )
+    expressions = {
+        target.get("expr", "")
+        for panel in dashboard["panels"]
+        for target in panel.get("targets", [])
+    }
+
+    assert {
+        "time() - weather_evidently_report_timestamp_seconds",
+        "weather_evidently_drifted_column_share",
+        "weather_model_labeled_predictions",
+        "weather_model_delayed_recall",
+        "weather_model_delayed_roc_auc",
+        "weather_model_retrain_requested",
+    } <= expressions
+
+
+def test_evidently_airflow_task_receives_monitoring_and_supabase_environment() -> None:
+    dag = (ROOT / "airflow/dags/weather_dag.py").read_text(encoding="utf-8")
+    task_start = dag.index('task_id="evidently_monitor"')
+    task = dag[task_start : dag.index("with DAG(", task_start)]
+
+    assert '"PUSHGATEWAY_URL": "http://pushgateway:9091"' in task
+    assert '"SUPABASE_URL": os.environ.get("SUPABASE_URL")' in task
+    assert '"SUPABASE_KEY": os.environ.get("SUPABASE_KEY")' in task
