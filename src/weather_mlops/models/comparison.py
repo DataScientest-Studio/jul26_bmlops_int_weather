@@ -134,11 +134,15 @@ def _catalog_model_version(
     run: Any,
     catalog_client: Any | None,
 ) -> None:
+    release = run_metadata.get("release")
+    release_dataset_sha256 = release.get("dataset_sha256") if isinstance(release, dict) else None
     catalog_registered_model(
         run_id=run_metadata["run_id"],
         model_version=run_metadata.get("model_version"),
         model_uri=run_metadata.get("model_uri"),
-        dataset_sha256=payload.get("dataset_sha256") or _current_dataset_sha256(),
+        dataset_sha256=release_dataset_sha256
+        or payload.get("dataset_sha256")
+        or _current_dataset_sha256(),
         params=dict(getattr(run.data, "params", None) or {}),
         metrics=metrics,
         stage=stage,

@@ -223,6 +223,31 @@ def test_baseline_bootstrap_uses_the_explicit_refit_release_metadata(tmp_path, m
     assert fake.aliases[("weather-rainfall-classifier", "champion")] == "2"
 
 
+def test_catalog_prefers_the_registered_model_training_snapshot(monkeypatch) -> None:
+    captured = {}
+    monkeypatch.setattr(
+        comparison,
+        "catalog_registered_model",
+        lambda **kwargs: captured.update(kwargs),
+    )
+
+    comparison._catalog_model_version(
+        run_metadata={
+            "run_id": "refit-run",
+            "model_version": "2",
+            "model_uri": "models:/weather-rainfall-classifier/2",
+            "release": {"dataset_sha256": "full-refit-sha"},
+        },
+        metrics={},
+        payload={"dataset_sha256": "evaluation-split-sha"},
+        stage="champion",
+        run=SimpleNamespace(data=SimpleNamespace(params={})),
+        catalog_client=object(),
+    )
+
+    assert captured["dataset_sha256"] == "full-refit-sha"
+
+
 def test_compare_keeps_champion_when_roc_auc_does_not_improve(tmp_path, monkeypatch) -> None:
     champion = SimpleNamespace(run_id="run-0", version="1")
     fake = FakeClient(champion=champion)
@@ -432,6 +457,17 @@ def test_compare_writes_champion_row_to_model_versions(tmp_path, monkeypatch) ->
             "run_id": "run-1",
             "model_version": "1",
             "model_uri": "models:/weather-rainfall-classifier/1",
+            "release": {
+                "run_id": "run-1",
+                "model_version": "1",
+                "model_uri": "models:/weather-rainfall-classifier/1",
+                "artifact_uri": "runs:/run-1/model",
+                "model_sha256": hash_file(model_path, "sha256"),
+                "dataset_sha256": manifest["sha256"],
+                "git_commit": "abc123",
+                "preprocessing_version": "2026.09.15",
+                "split": {},
+            },
         },
         fake,
     )
