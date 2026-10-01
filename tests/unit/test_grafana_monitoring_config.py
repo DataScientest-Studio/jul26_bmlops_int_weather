@@ -28,3 +28,11 @@ def test_airflow_receiver_targets_the_retraining_dag() -> None:
     url = contacts["contactPoints"][0]["receivers"][0]["settings"]["url"]
 
     assert "/dags/weather_retrain/dagRuns" in url
+
+
+def test_only_delayed_performance_gate_can_request_retraining() -> None:
+    retrain = next(rule for rule in _alerts() if rule["uid"] == "model-retrain-requested")
+    query = retrain["data"][0]["model"]["expr"]
+
+    assert "weather_model_retrain_requested" in query
+    assert retrain["notification_settings"]["receiver"] == "airflow-retrain"
