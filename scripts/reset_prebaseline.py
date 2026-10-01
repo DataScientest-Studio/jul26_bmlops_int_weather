@@ -74,7 +74,14 @@ def snapshot_catalog(client: Any, backup_dir: Path) -> None:
         )
 
 
-def snapshot_and_remove_local_artifacts(project_root: Path, backup_dir: Path) -> None:
+def _incremental_paths(project_root: Path) -> list[Path]:
+    incremental_dir = project_root / "data/raw/incremental"
+    return sorted(incremental_dir.glob("open_meteo_*")) if incremental_dir.exists() else []
+
+
+def snapshot_local_artifacts(project_root: Path, backup_dir: Path) -> None:
+    """Copy generated local artifacts without modifying their source paths."""
+
     local_dir = backup_dir / "local"
     local_dir.mkdir(parents=True, exist_ok=False)
     for relative_path in LOCAL_RESET_PATHS:
@@ -85,22 +92,30 @@ def snapshot_and_remove_local_artifacts(project_root: Path, backup_dir: Path) ->
         destination.parent.mkdir(parents=True, exist_ok=True)
         if source.is_dir():
             shutil.copytree(source, destination)
-            shutil.rmtree(source)
         else:
             shutil.copy2(source, destination)
+
+    for source in _incremental_paths(project_root):
+        destination = local_dir / "data/raw/incremental" / source.name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+
+
+def remove_local_artifacts(project_root: Path) -> None:
+    """Remove only generated artifacts that were already copied into a backup."""
+
+    for relative_path in LOCAL_RESET_PATHS:
+        source = project_root / relative_path
+        if source.is_dir():
+            shutil.rmtree(source)
+        elif source.exists():
             source.unlink()
-
-    incremental_dir = project_root / "data/raw/incremental"
-    if incremental_dir.exists():
-        for source in incremental_dir.glob("open_meteo_*"):
-            destination = local_dir / "data/raw/incremental" / source.name
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source, destination)
-            source.unlink()
+    for source in _incremental_paths(project_root):
+        source.unlink()
 
 
-def snapshot_and_clear_mlflow_artifacts(client: Any, bucket: str, backup_dir: Path) -> None:
-    """Download every MLflow artifact before removing it from the artifact bucket."""
+def snapshot_mlflow_artifacts(client: Any, bucket: str, backup_dir: Path) -> list[str]:
+    """Download every MLflow artifact before any remote deletion occurs."""
 
     objects = [
         item["Key"]
@@ -115,12 +130,32 @@ def snapshot_and_clear_mlflow_artifacts(client: Any, bucket: str, backup_dir: Pa
         destination = artifact_dir / relative
         destination.parent.mkdir(parents=True, exist_ok=True)
         client.download_file(bucket, key, str(destination))
+    (artifact_dir / "objects.json").write_text(
+        json.dumps(objects, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return objects
 
-    for start in range(0, len(objects), 1000):
-        client.delete_objects(
-            Bucket=bucket,
-            Delete={"Objects": [{"Key": key} for key in objects[start : start + 1000]]},
-        )
+
+def clear_mlflow_artifacts(
+    client: Any,
+    bucket: str,
+    objects: list[str],
+    progress_path: Path,
+    *,
+    max_objects: int,
+) -> bool:
+    """Delete a bounded batch and persist progress for safe resumption."""
+
+    deleted = set()
+    if progress_path.exists():
+        deleted = set(json.loads(progress_path.read_text(encoding="utf-8")))
+    pending = [key for key in objects if key not in deleted]
+    for key in pending[:max_objects]:
+        client.delete_object(Bucket=bucket, Key=key)
+        deleted.add(key)
+        progress_path.write_text(json.dumps(sorted(deleted), indent=2) + "\n", encoding="utf-8")
+    return len(deleted) == len(objects)
 
 
 def _catalog_connection():
@@ -148,6 +183,16 @@ def _mlflow_s3_client():
     )
 
 
+def prepare_backup_dir(path: Path, *, resume: bool) -> Path:
+    backup_dir = path.resolve()
+    if backup_dir.exists():
+        if not resume:
+            raise FileExistsError(f"Backup directory already exists: {backup_dir}")
+        return backup_dir
+    backup_dir.mkdir(parents=True)
+    return backup_dir
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Archive and reset pre-baseline model lineage. Raw data is preserved."
@@ -155,6 +200,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--backup-dir", required=True, type=Path)
     parser.add_argument("--confirm")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--max-mlflow-deletes", type=int, default=50)
     return parser.parse_args()
 
 
@@ -167,19 +214,39 @@ def main() -> None:
         print("Would preserve: raw Kaggle, Singapore fixture, weather_observations, DVC blobs.")
         return
     require_confirmation(args.confirm)
-    backup_dir = args.backup_dir.resolve()
-    if backup_dir.exists():
-        raise FileExistsError(f"Backup directory already exists: {backup_dir}")
+    if args.max_mlflow_deletes < 1:
+        raise ValueError("--max-mlflow-deletes must be positive")
+    backup_dir = prepare_backup_dir(args.backup_dir, resume=args.resume)
 
     client = get_supabase_client()
-    backup_dir.mkdir(parents=True)
-    snapshot_catalog(client, backup_dir)
+    if not (backup_dir / "catalog").exists():
+        snapshot_catalog(client, backup_dir)
+    if not (backup_dir / "local").exists():
+        snapshot_local_artifacts(PROJECT_ROOT, backup_dir)
+    s3_client = _mlflow_s3_client()
+    mlflow_backup = backup_dir / "mlflow-s3"
+    if (mlflow_backup / "objects.json").exists():
+        mlflow_objects = json.loads((mlflow_backup / "objects.json").read_text(encoding="utf-8"))
+    else:
+        mlflow_objects = snapshot_mlflow_artifacts(
+            s3_client, settings.supabase_mlflow_bucket, backup_dir
+        )
     with _catalog_connection() as connection:
         reset_catalog(connection)
-    snapshot_and_clear_mlflow_artifacts(
-        _mlflow_s3_client(), settings.supabase_mlflow_bucket, backup_dir
+    completed = clear_mlflow_artifacts(
+        s3_client,
+        settings.supabase_mlflow_bucket,
+        mlflow_objects,
+        mlflow_backup / "deleted.json",
+        max_objects=args.max_mlflow_deletes,
     )
-    snapshot_and_remove_local_artifacts(PROJECT_ROOT, backup_dir)
+    if not completed:
+        print(
+            "MLflow cleanup batch complete. Re-run with --resume to continue; "
+            "local artifacts were preserved."
+        )
+        return
+    remove_local_artifacts(PROJECT_ROOT)
     print(f"Pre-baseline reset complete. Recovery snapshot: {backup_dir}")
 
 

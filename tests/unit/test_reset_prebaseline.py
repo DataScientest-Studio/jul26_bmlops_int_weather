@@ -27,6 +27,7 @@ class _S3:
     def __init__(self) -> None:
         self.downloaded: list[tuple[str, str]] = []
         self.deleted: list[dict] = []
+        self.deleted_keys: list[tuple[str, str]] = []
 
     def get_paginator(self, _name: str):
         return self
@@ -40,6 +41,9 @@ class _S3:
 
     def delete_objects(self, **kwargs) -> None:
         self.deleted.append(kwargs)
+
+    def delete_object(self, **kwargs) -> None:
+        self.deleted_keys.append((kwargs["Bucket"], kwargs["Key"]))
 
 
 def test_reset_catalog_clears_only_experimental_lineage_tables() -> None:
@@ -77,21 +81,77 @@ def test_reset_archives_then_deletes_mlflow_artifacts(tmp_path) -> None:
     reset = _reset_module()
     client = _S3()
 
-    reset.snapshot_and_clear_mlflow_artifacts(client, "weather-mlops-mlflow", tmp_path)
+    objects = reset.snapshot_mlflow_artifacts(client, "weather-mlops-mlflow", tmp_path)
 
     assert client.downloaded == [
         ("weather-mlops-mlflow", "1/model/MLmodel"),
         ("weather-mlops-mlflow", "1/model/model.pkl"),
     ]
     assert (tmp_path / "mlflow-s3/1/model/MLmodel").read_text(encoding="utf-8") == "1/model/MLmodel"
-    assert client.deleted == [
-        {
-            "Bucket": "weather-mlops-mlflow",
-            "Delete": {
-                "Objects": [
-                    {"Key": "1/model/MLmodel"},
-                    {"Key": "1/model/model.pkl"},
-                ]
-            },
-        }
+    assert client.deleted == []
+
+    completed = reset.clear_mlflow_artifacts(
+        client,
+        "weather-mlops-mlflow",
+        objects,
+        tmp_path / "mlflow-s3/deleted.json",
+        max_objects=1,
+    )
+
+    assert completed is False
+    assert client.deleted_keys == [("weather-mlops-mlflow", "1/model/MLmodel")]
+    assert client.deleted == []
+
+    completed = reset.clear_mlflow_artifacts(
+        client,
+        "weather-mlops-mlflow",
+        objects,
+        tmp_path / "mlflow-s3/deleted.json",
+        max_objects=10,
+    )
+
+    assert completed is True
+    assert client.deleted_keys == [
+        ("weather-mlops-mlflow", "1/model/MLmodel"),
+        ("weather-mlops-mlflow", "1/model/model.pkl"),
     ]
+
+
+def test_mlflow_snapshot_can_resume_after_an_incomplete_download(tmp_path) -> None:
+    reset = _reset_module()
+    (tmp_path / "mlflow-s3").mkdir()
+    client = _S3()
+
+    objects = reset.snapshot_mlflow_artifacts(client, "weather-mlops-mlflow", tmp_path)
+
+    assert objects == ["1/model/MLmodel", "1/model/model.pkl"]
+    assert (tmp_path / "mlflow-s3/objects.json").exists()
+
+
+def test_local_artifacts_are_backed_up_before_removal(tmp_path) -> None:
+    reset = _reset_module()
+    project_root = tmp_path / "project"
+    source = project_root / "models/best_model.joblib"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"candidate")
+    backup_dir = tmp_path / "backup"
+
+    reset.snapshot_local_artifacts(project_root, backup_dir)
+
+    assert source.exists()
+    assert (backup_dir / "local/models/best_model.joblib").read_bytes() == b"candidate"
+
+    reset.remove_local_artifacts(project_root)
+
+    assert not source.exists()
+
+
+def test_reset_allows_only_an_explicit_resume_of_an_existing_backup(tmp_path) -> None:
+    reset = _reset_module()
+    backup_dir = tmp_path / "backup"
+    backup_dir.mkdir()
+
+    with pytest.raises(FileExistsError):
+        reset.prepare_backup_dir(backup_dir, resume=False)
+
+    assert reset.prepare_backup_dir(backup_dir, resume=True) == backup_dir

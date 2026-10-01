@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.13,<3.14"
 dependencies = [
     "cryptography>=50.0.1",
+    "boto3>=1.40.0",
     "dvc>=3.65.0",
     "dvc-s3>=3.2.0",
     "fastapi>=0.141.1",
