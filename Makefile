@@ -107,7 +107,7 @@ train: serve
 # evaluate the untouched test set, and bootstrap the empty MLflow champion alias.
 baseline:
 	$(MAKE) mlflow
-	$(LOCAL_ENV) uv run python scripts/with_vault_env.py --s3 $(COMPOSE) --profile baseline --profile mlflow run --rm baseline
+	$(LOCAL_ENV) uv run python scripts/with_vault_env.py --s3 $(COMPOSE) --profile baseline --profile mlflow run --rm --build baseline
 
 validate:
 	$(COMPOSE) run --rm --no-deps --entrypoint python api -m weather_mlops.models.evaluation --x-data data/processed/X_validation.csv --y-data data/processed/y_validation.csv --metrics-output reports/metrics/validation.json --split-name validation
