@@ -2,7 +2,7 @@
 
 REPO_URL = "https://github.com/DataScientest-Studio/jul26_bmlops_int_weather"
 # links point to this commit, so the jury sees the code we present
-COMMIT = "4f7419c5f8a78635e19d3e22844c76d416b8316e"
+COMMIT = "79baa2d5f02813ee8aef8b615adf1593a79cda26"
 
 STAGES = [
     {"id": "data", "label": "Data", "built": True},
@@ -13,7 +13,7 @@ STAGES = [
     {"id": "security", "label": "Security", "built": True},
     {"id": "orchestration", "label": "Orchestration", "built": True},
     {"id": "cicd", "label": "CI/CD", "built": True},
-    {"id": "monitoring", "label": "Monitoring", "built": False},
+    {"id": "monitoring", "label": "Monitoring", "built": True},
 ]
 
 TEAM = ["Gabriel", "Jonathan", "Thomas", "Ziad"]
@@ -410,16 +410,17 @@ SECTIONS = [
                             "Load champion",
                             "Predict",
                             "Answer with model",
+                            "Record metrics",
                         ],
                     },
                 ],
                 "points": [
-                    "Four endpoints: health, predict, live predict, train.",
+                    "Four public endpoints, plus /metrics for Prometheus only.",
                     "Out-of-range values and unknown stations are rejected.",
                     "Every answer names the model that produced it.",
                 ],
                 "facts": [
-                    ["Endpoints", "4"],
+                    ["Endpoints", "5"],
                     ["Rainfall bounds", "0 to 500 mm"],
                     ["Live weather timeout", "30 s"],
                     ["Stations accepted", "49"],
@@ -429,24 +430,23 @@ SECTIONS = [
                     ["Model loading", "src/weather_mlops/models/predict.py"],
                 ],
                 "notes": [
-                    "About 1.5 minutes.",
+                    "About 1 minute 15 seconds.",
                     "At startup the API loads its Basic-auth credentials from Supabase Vault.",
-                    "Four endpoints. Health is open. Predict takes one day of measurements. "
-                    "Live predict takes only a station name. Train retrains.",
+                    "Four public endpoints. Health is open. Predict takes one day of "
+                    "measurements. Live predict takes only a station name. Train retrains.",
+                    "A fifth endpoint, /metrics, is for Prometheus only. Nginx answers 404 "
+                    "from outside; more on that in the monitoring slide.",
                     "Inputs have bounds, for example rainfall between 0 and 500 mm. Unknown "
                     "stations are rejected with a suggestion for likely typos.",
                     "Live predict looks up the station's coordinates, fetches today's "
                     "weather from Open-Meteo with a 30-second timeout, and returns 502 if "
                     "the data is not available yet.",
                     "Train accepts five hyperparameters with bounds, for example depth up "
-                    "to 15. It returns the training metrics and clears the prediction "
-                    "cache.",
+                    "to 15. It returns metrics on the training and on the validation data, "
+                    "and clears the prediction cache.",
                     "Every answer includes the model that served it: name, alias, version, source.",
                     "The API checks the champion alias on each prediction, so a promotion "
                     "or rollback takes effect without a restart.",
-                    "No champion exists yet, so the API serves the local model file. Say "
-                    "this before the demo rather than being caught by it.",
-                    "Gabriel covered the gateway in front of this; do not repeat it.",
                 ],
             },
             {
@@ -457,17 +457,17 @@ SECTIONS = [
                 "figure": None,
                 "lanes": [
                     {
-                        "name": "Scheduled daily at 22:00",
+                        "name": "Scheduled daily at 18:00 CEST, or on drift alert",
                         "steps": ["Ingest", "Preprocess", "Train", "Validate", "Compare"],
                     },
                 ],
                 "points": [
                     "Each task runs one of our Docker images.",
                     "Training goes through the gateway, like any client.",
-                    "Three retries per task.",
+                    "DAG can be triggered via Grafana-Webhook",
                 ],
                 "facts": [
-                    ["Schedule", "daily, 22:00"],
+                    ["Schedule", "daily, 18:00 CEST"],
                     ["Tasks", "5"],
                     ["Retries", "3, one minute apart"],
                     ["Verified run", "25 Sep: 5 of 5 in 44 s"],
@@ -476,12 +476,15 @@ SECTIONS = [
                     ["Airflow DAG", "airflow/dags/weather_dag.py"],
                 ],
                 "notes": [
-                    "About 2 minutes.",
+                    "About 1.5 minutes.",
                     "Airflow 2.8.1 runs as its own Compose stack: a Postgres 13 metadata "
                     "database, the web server, the scheduler, and a LocalExecutor.",
                     "The DAG weather_pipeline has five tasks: ingestion, preprocess, train, "
-                    "evaluation, compare. It is scheduled daily at 22:00, from 1 Sep 2026, "
-                    "without catch-up.",
+                    "evaluation, compare. It runs daily at 18:00 Berlin time. No "
+                    "catch-up: after downtime only the latest missed run is executed.",
+                    "Second trigger: when the drift alert fires, Grafana starts the DAG "
+                    "through the Airflow REST API. For this the Airflow web server also "
+                    "joins our Docker network.",
                     "Each task is a DockerOperator that runs one of our images, so Airflow "
                     "runs the same code as Compose. Containers are removed after each task.",
                     "Ingestion and preprocess can write the data folder. Train, evaluation "
@@ -492,10 +495,12 @@ SECTIONS = [
                     "images and POST calls, and denies network management.",
                     "Each task retries up to 3 times, one minute apart. The DAG runs "
                     "validation only; the test-set evaluation is make pipeline.",
-                    "Verified 25 Sep 2026: the scheduled run for the 24 Sep 22:00 UTC slot "
-                    "succeeded. All five tasks passed on the first try, in 44 seconds.",
-                    "That run fetched 49 new rows, retrained, and compare rejected the "
-                    "model on recall (0.726), the same decision as make pipeline.",
+                    "Verified 25 Sep 2026: a scheduled run succeeded. All five tasks passed "
+                    "on the first try, in 44 seconds. It fetched 49 new rows, retrained, "
+                    "and compare rejected the model on recall (0.726), the same decision "
+                    "as make pipeline.",
+                    "Verified 28 Sep 2026: the Grafana webhook started a run, visible in "
+                    "Airflow with the run config triggered_by grafana.",
                     "The run history is in the Airflow UI at localhost:8081. The DAG starts "
                     "paused (Airflow setting) and stays paused until unpaused.",
                 ],
@@ -516,7 +521,7 @@ SECTIONS = [
                 "points": [],
                 "facts": [
                     ["CI jobs", "2"],
-                    ["Tests", "122 (6 live gateway)"],
+                    ["Tests", "160 (6 live gateway)"],
                     ["Images built", "7"],
                     ["Images on ghcr.io", "3"],
                 ],
@@ -526,21 +531,84 @@ SECTIONS = [
                     ["Tests", "tests/"],
                 ],
                 "notes": [
-                    "About 1.5 minutes. Then hand over to Ziad.",
-                    "CI runs on pushes and pull requests to master, in two jobs.",
-                    "Job one, on the runner: install from the locked uv environment, ruff "
-                    "lint, ruff format check, then pytest without the live gateway tests.",
-                    "Job two, in Docker: build every image across the four Compose "
-                    "profiles, start the API and Nginx, and run the test image against "
-                    "https://nginx, so the live gateway tests run too.",
-                    "The live tests check the HTTP redirect, the TLS version, HSTS, 401 "
-                    "without credentials, and a burst that must return 429.",
-                    "The committed suite collects 122 tests, 6 of them live gateway tests.",
-                    "Release, on push to master: log in to ghcr.io with the workflow token "
-                    "and push the ingestion, preprocess and API images, approved by Nicolas "
-                    "on 10 Sep.",
+                    "About 45 seconds. Keep it short, the lanes say most of it.",
+                    "CI runs on every push and pull request to master, in two jobs.",
+                    "Job one: ruff lint and format check, then the unit tests.",
+                    "Job two, in Docker: build all seven images, start the API and Nginx, "
+                    "and run the live gateway tests against them: redirect, TLS, 401 "
+                    "without credentials, and 429 on a burst.",
+                    "Release, on push to master: push the ingestion, preprocess and API "
+                    "images to ghcr.io.",
                     "If asked: release runs in parallel with CI and tags only latest. "
                     "Gating it on CI and tagging by commit is the next step.",
+                    "If asked about details, the full CI setup was built by the team; "
+                    "the workflow files are linked below.",
+                ],
+            },
+            {
+                "id": "monitoring",
+                "title": "Monitoring with Prometheus and Grafana",
+                "layout": "flow",
+                "stages": ["monitoring"],
+                "figure": None,
+                "lanes": [
+                    {
+                        "name": "Prometheus scrapes every 15 sec",
+                        "steps": ["API endpoints", "/metrics", "Prometheus", "Grafana"],
+                    },
+                    {
+                        "name": "On drift alert",
+                        "steps": ["Alert", "Webhook", "Airflow", "New model"],
+                    },
+                ],
+                "points": [
+                    "Live predictions and training report model metrics",
+                    "Drift proxy via alert based on the rain prediction distribution",
+                    "If the alert is firing -> DAG run via Grafana Webhook",
+                ],
+                "facts": [
+                    ["Scrape interval", "15 s"],
+                    ["Dashboards", "2"],
+                    ["Alerts", "6 (3 API, 3 model)"],
+                    ["Max retraining", "1/day"],
+                ],
+                "links": [
+                    ["Metrics", "src/weather_mlops/api/metrics.py"],
+                    ["Prometheus", "docker/prometheus/"],
+                    ["Grafana", "docker/grafana/"],
+                ],
+                "notes": [
+                    "About 1.5 minutes. Then hand over to Ziad.",
+                    "The API measures itself. A library counts every request by endpoint, "
+                    "method and status, and times it.",
+                    "On top come our own model metrics. Live predictions record the "
+                    "station, rain or no rain, the probability and the model that answered. "
+                    "Train records how often and how long we train, and the validation "
+                    "metrics.",
+                    "All of it is exposed on /metrics. Nginx blocks it from outside, "
+                    "Prometheus reads it inside the Docker network every 15 seconds and "
+                    "keeps the history.",
+                    "Grafana shows two dashboards: Weather API for requests, errors and "
+                    "latency, Weather model for rain rate, probabilities, active model and "
+                    "performance.",
+                    "Everything in Grafana is code in docker/grafana: data source, "
+                    "dashboards and alerts. After git pull and make monitoring everyone has "
+                    "the same setup.",
+                    "Six alerts. API: down, more than 10 percent server errors, average "
+                    "latency above 5 seconds. Model: ROC-AUC below 0.866, recall below "
+                    "0.75, unusual rain rate.",
+                    "Performance alerts go to a person, not to retraining: retraining on "
+                    "the same data would produce the same model.",
+                    "The rain-rate alert is our drift signal: if under 5 or over 60 percent "
+                    "of the last 24 hours' predictions say rain, with at least 20 "
+                    "predictions, Grafana calls Airflow through a webhook, at most once a "
+                    "day.",
+                    "This is a proxy. Real drift detection compares the input "
+                    "data with the training data; that is the Evidently part.",
+                    "For now alerts are only visible in Grafana, no Slack, to avoid noise "
+                    "while we test.",
+                    "If asked about latency: the library's default buckets stop at 1 "
+                    "second, so we alert on average latency instead of the 95th percentile.",
                 ],
             },
         ],
@@ -599,7 +667,6 @@ SECTIONS = [
                 "points": [
                     "Drift detection with Evidently.",
                     "Storing each prediction with its features.",
-                    "Metrics and alerts with Prometheus and Grafana.",
                 ],
                 "facts": [
                     ["Tables ready", "predictions, drift_reports"],
