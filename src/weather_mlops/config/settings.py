@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     validation_metrics_path: Path = PROJECT_ROOT / "reports" / "metrics" / "validation.json"
     evaluation_metrics_path: Path = PROJECT_ROOT / "reports" / "metrics" / "evaluation.json"
     evidently_reports_dir: Path = PROJECT_ROOT / "reports" / "evidently"
+    pushgateway_url: str | None = None
 
     # Supabase. Local .env only needs SUPABASE_URL + SUPABASE_KEY.
     # S3 keys and API basic auth come from Vault when they are not already set.

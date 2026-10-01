@@ -68,7 +68,10 @@ with DAG(
         network_mode="jul26_bmlops_int_weather_weather_network",
         auto_remove=True,
         command="python3 -m weather_mlops.monitoring.drift",
-        environment={"MLFLOW_TRACKING_URI": "http://mlflow:8080"},
+        environment={
+            "MLFLOW_TRACKING_URI": "http://mlflow:8080",
+            "PUSHGATEWAY_URL": "http://pushgateway:9091",
+        },
         mount_tmp_dir=False,
     )
     ingestion >> preprocessing >> reconcile_outcomes >> evidently_monitor
