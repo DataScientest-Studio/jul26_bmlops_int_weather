@@ -62,25 +62,29 @@ SUPABASE_URL=https://<project-ref>.supabase.co
 SUPABASE_KEY=<supabase-service-role-or-sb_secret-key>
 ```
 
-For `make monitoring`, add these local Compose credentials too:
+For `make monitoring` and `make airflow-up`, store these operational
+credentials in Supabase Vault:
 
 ```text
-# Must equal AIRFLOW_ADMIN / AIRFLOW_PW in airflow/.env.
 AIRFLOW_API_USER=<airflow-admin-name>
 AIRFLOW_API_PASSWORD=<airflow-admin-password>
 GF_SECURITY_ADMIN_USER=<grafana-admin-name>
 GF_SECURITY_ADMIN_PASSWORD=<grafana-admin-password>
 ```
 
-Grafana uses `AIRFLOW_API_*` only to authenticate the alert webhook that starts
-`weather_retrain`. `PUSHGATEWAY_URL` is deliberately not configurable here:
-the Airflow task uses the internal Compose address `http://pushgateway:9091`.
+Grafana uses `AIRFLOW_API_*` to authenticate the alert webhook that starts
+`weather_retrain`; Airflow creates its admin account using the same pair.
+`make monitoring` and `make airflow-up` hydrate them from Vault immediately
+before Compose starts. A local `.env` value remains a development override.
+`PUSHGATEWAY_URL` is deliberately not configurable here: the Airflow task uses
+the internal Compose address `http://pushgateway:9091`.
 
 Supabase Vault contains the existing application secrets only:
 `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `API_AUTH_USER`,
-`API_AUTH_PASSWORD`, and `SUPABASE_DB_URL`. This monitoring integration adds
-**no new Supabase Vault secret**. **Do not put Vault values in `.env`** and do
-not commit `.env`.
+`API_AUTH_PASSWORD`, `SUPABASE_DB_URL`, `AIRFLOW_API_USER`,
+`AIRFLOW_API_PASSWORD`, `GF_SECURITY_ADMIN_USER`, and
+`GF_SECURITY_ADMIN_PASSWORD`. **Do not put Vault values in `.env`** and do not
+commit `.env`.
 
 Rotate a Vault secret, then `make api` to restart the API container. Vault
 hydration is a startup snapshot, not live reload.

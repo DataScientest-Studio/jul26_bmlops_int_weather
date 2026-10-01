@@ -71,7 +71,7 @@ mlflow:
 	$(LOCAL_ENV) uv run python scripts/with_vault_env.py --s3 $(COMPOSE) --profile mlflow up -d --build --wait mlflow
 
 monitoring: serve
-	$(COMPOSE) --profile monitoring up -d prometheus grafana
+	$(LOCAL_ENV) uv run python scripts/with_vault_env.py --monitoring $(COMPOSE) --profile monitoring up -d prometheus grafana
 
 down:
 	$(COMPOSE) --profile gateway --profile streamlit --profile test --profile mlflow --profile monitoring down --remove-orphans
@@ -132,7 +132,7 @@ register-dataset:
 	$(COMPOSE) run --rm --no-deps --build --entrypoint python api scripts/register_dataset_version.py $(ARGS)
 
 airflow-up:
-	cd airflow && docker compose --env-file .env --env-file ../.env up -d
+	$(LOCAL_ENV) uv run python scripts/with_vault_env.py --monitoring sh -c 'cd airflow && docker compose --env-file .env --env-file ../.env up -d'
 
 airflow-down:
 	cd airflow && docker compose --env-file .env --env-file ../.env down

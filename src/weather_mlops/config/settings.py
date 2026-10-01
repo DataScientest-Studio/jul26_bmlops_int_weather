@@ -65,6 +65,13 @@ class Settings(BaseSettings):
     api_auth_user: str | None = None
     api_auth_password: str | None = None
 
+    # Local monitoring credentials. They may be overridden from Vault before
+    # Grafana or Airflow Compose is started.
+    airflow_api_user: str | None = None
+    airflow_api_password: str | None = None
+    gf_security_admin_user: str | None = None
+    gf_security_admin_password: str | None = None
+
     # Model
     random_state: int = 42
     training_window_days: int | None = 1825

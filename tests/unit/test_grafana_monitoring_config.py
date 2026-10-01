@@ -66,3 +66,12 @@ def test_evidently_airflow_task_receives_monitoring_and_supabase_environment() -
     assert '"PUSHGATEWAY_URL": "http://pushgateway:9091"' in task
     assert '"SUPABASE_URL": os.environ.get("SUPABASE_URL")' in task
     assert '"SUPABASE_KEY": os.environ.get("SUPABASE_KEY")' in task
+
+
+def test_monitoring_and_airflow_hydrate_operational_credentials_from_vault() -> None:
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    airflow = (ROOT / "airflow/docker-compose.yml").read_text(encoding="utf-8")
+
+    assert "with_vault_env.py --monitoring" in makefile
+    assert "_AIRFLOW_WWW_USER_USERNAME: ${AIRFLOW_API_USER}" in airflow
+    assert "_AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_API_PASSWORD}" in airflow
