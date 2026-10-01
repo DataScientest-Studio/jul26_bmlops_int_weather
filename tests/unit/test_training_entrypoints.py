@@ -83,6 +83,13 @@ def test_makefile_predict_goes_through_the_gateway():
     assert "-m weather_mlops.models.predict" not in makefile
 
 
+def test_makefile_exposes_resumable_open_meteo_backfill() -> None:
+    makefile = (PROJECT_ROOT / "Makefile").read_text()
+
+    assert "\nbackfill-open-meteo:" in makefile
+    assert "scripts/backfill_open_meteo.py $(ARGS)" in makefile
+
+
 def test_dvc_predict_sample_uses_the_module_cli():
     dvc = (PROJECT_ROOT / "dvc.yaml").read_text()
     source = (PROJECT_ROOT / "src" / "weather_mlops" / "models" / "predict.py").read_text()

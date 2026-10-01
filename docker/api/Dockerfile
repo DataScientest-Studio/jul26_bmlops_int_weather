@@ -8,6 +8,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY src/ ./src/
 COPY scripts/ ./scripts/
 COPY references/ ./references/
+COPY params.yaml ./
 
 ARG GIT_COMMIT=
 ENV GIT_COMMIT=$GIT_COMMIT

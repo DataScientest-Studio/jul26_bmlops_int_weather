@@ -7,12 +7,23 @@ from typing import Any
 from weather_mlops.config.settings import settings
 
 REQUIRED_RELEASE_ARTIFACTS = {
-    "model",
     "joblib/rain_classifier.joblib",
     "metrics/train.json",
     "dataset/manifest.json",
     "lineage/release.json",
 }
+
+
+def _list_artifact_paths(client: Any, run_id: str, path: str | None = None) -> set[str]:
+    paths: set[str] = set()
+    artifacts = (
+        client.list_artifacts(run_id) if path is None else client.list_artifacts(run_id, path)
+    )
+    for artifact in artifacts:
+        paths.add(artifact.path)
+        if getattr(artifact, "is_dir", False):
+            paths.update(_list_artifact_paths(client, run_id, artifact.path))
+    return paths
 
 
 def build_model_release(
@@ -50,7 +61,7 @@ def verify_model_release(release: dict[str, Any], client: Any) -> None:
     if version.run_id != release["run_id"]:
         raise RuntimeError("registered model version belongs to a different run")
 
-    paths = {artifact.path for artifact in client.list_artifacts(release["run_id"])}
+    paths = _list_artifact_paths(client, release["run_id"])
     missing = REQUIRED_RELEASE_ARTIFACTS - paths
     if missing:
         raise RuntimeError(f"release artifact missing: {sorted(missing)}")

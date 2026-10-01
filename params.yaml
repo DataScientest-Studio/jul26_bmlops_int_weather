@@ -9,3 +9,16 @@ model:
   learning_rate: 0.05
   subsample: 0.9
   colsample_bytree: 0.9
+
+baseline:
+  validation_window_days: 90
+  test_window_days: 90
+  search:
+    n_iter: 12
+    random_state: 42
+    parameter_space:
+      n_estimators: [150, 250, 350]
+      max_depth: [3, 4, 5]
+      learning_rate: [0.03, 0.05]
+      subsample: [0.8, 0.9]
+      colsample_bytree: [0.8, 0.9]

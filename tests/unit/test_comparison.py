@@ -162,6 +162,32 @@ def test_first_model_is_rejected_when_recall_is_below_guardrail(tmp_path, monkey
     assert fake.tags[("weather-rainfall-classifier", "1", "stage")] == "candidate"
 
 
+def test_baseline_bootstrap_promotes_the_first_refit_without_candidate_guardrails(
+    tmp_path, monkeypatch
+) -> None:
+    fake = FakeClient()
+    model_path = tmp_path / "rain_classifier.joblib"
+    model_path.write_bytes(b"model")
+    _patch_compare(
+        tmp_path,
+        monkeypatch,
+        _metrics(model_path, validation_roc_auc=0.71, validation_recall=0.50),
+        {"run_id": "run-1", "model_version": "1"},
+        fake,
+    )
+
+    result = comparison.promote_baseline_champion()
+
+    assert result["promoted"] is True
+    assert result["decision"] == "baseline_bootstrap"
+    assert (tmp_path / "best_model.joblib").read_bytes() == b"model"
+    assert fake.aliases[("weather-rainfall-classifier", "champion")] == "1"
+    assert fake.tags[("weather-rainfall-classifier", "1", "stage")] == "champion"
+    assert (
+        fake.tags[("weather-rainfall-classifier", "1", "promotion_reason")] == "baseline_bootstrap"
+    )
+
+
 def test_compare_keeps_champion_when_roc_auc_does_not_improve(tmp_path, monkeypatch) -> None:
     champion = SimpleNamespace(run_id="run-0", version="1")
     fake = FakeClient(champion=champion)

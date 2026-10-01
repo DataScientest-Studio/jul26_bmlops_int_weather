@@ -84,6 +84,7 @@ def _require_matching_evaluation(
     payload: dict[str, Any],
     model_source_path: Path,
     run_metadata: dict[str, Any],
+    processed_dir: Path | None = None,
 ) -> None:
     recorded_model = payload.get("model_sha256")
     actual_model = hash_file(Path(model_source_path), "sha256")
@@ -100,7 +101,10 @@ def _require_matching_evaluation(
         )
     recorded_dataset = payload.get("dataset_sha256")
     if recorded_dataset:
-        current_dataset = _current_dataset_sha256()
+        if processed_dir is None:
+            current_dataset = _current_dataset_sha256()
+        else:
+            current_dataset = str(verify_processed_manifest(processed_dir)["sha256"])
         if not current_dataset:
             raise RuntimeError("Processed dataset cannot be verified. Re-run make validate.")
         if recorded_dataset != current_dataset:
@@ -232,6 +236,87 @@ def compare_models(
         f"({settings.mlflow_primary_metric}={candidate_score:.4f}, "
         f"{settings.mlflow_recall_metric}={candidate_recall:.4f}, "
         f"best={current_best})"
+    )
+    return result
+
+
+def promote_baseline_champion(
+    metrics_path: Path | None = None,
+    model_source_path: Path | None = None,
+    catalog_client: Any | None = None,
+    selection_processed_dir: Path | None = None,
+) -> dict:
+    """Install the verified full-Kaggle baseline as the one allowed first champion.
+
+    This is intentionally not part of normal candidate comparison: it can run
+    only before a champion exists.  Subsequent retraining always uses
+    ``compare_models`` and its recall/ROC-AUC guardrails.
+    """
+
+    metrics_path = Path(metrics_path or settings.validation_metrics_path)
+    model_source_path = Path(model_source_path or settings.model_path)
+    if not metrics_path.exists():
+        raise FileNotFoundError(f"No validation metrics at {metrics_path}. Validate first.")
+    if not settings.mlflow_tracking_uri:
+        raise RuntimeError("MLFLOW_TRACKING_URI is not set.")
+    if not model_source_path.exists():
+        raise FileNotFoundError(f"No trained model at {model_source_path}. Train first.")
+
+    run_metadata = _require_matching_run(model_source_path)
+    payload = _load_payload(metrics_path)
+    _require_matching_evaluation(
+        payload,
+        model_source_path,
+        run_metadata,
+        processed_dir=selection_processed_dir,
+    )
+    release = run_metadata.get("release")
+    if not isinstance(release, dict):
+        raise RuntimeError("mlflow_run.json has no verified release tuple. Retrain first.")
+    client = MlflowClient(tracking_uri=settings.mlflow_tracking_uri)
+    verify_model_release(release, client)
+    if _load_champion(client) is not None:
+        raise RuntimeError("A champion already exists; use normal candidate comparison instead.")
+
+    metrics = _numeric_metrics(payload)
+    run = client.get_run(run_metadata["run_id"])
+    for name, value in metrics.items():
+        client.log_metric(run.info.run_id, name, value)
+    client.set_registered_model_alias(
+        name=settings.mlflow_model_name,
+        alias=settings.mlflow_champion_alias,
+        version=run_metadata["model_version"],
+    )
+    client.set_model_version_tag(
+        name=settings.mlflow_model_name,
+        version=run_metadata["model_version"],
+        key="stage",
+        value="champion",
+    )
+    client.set_model_version_tag(
+        name=settings.mlflow_model_name,
+        version=run_metadata["model_version"],
+        key="promotion_reason",
+        value="baseline_bootstrap",
+    )
+    _copy_champion_joblib(model_source_path)
+    _catalog_model_version(
+        run_metadata=run_metadata,
+        metrics=metrics,
+        payload=payload,
+        stage="champion",
+        run=run,
+        catalog_client=catalog_client,
+    )
+    result = {
+        "run_id": run_metadata["run_id"],
+        "model_version": run_metadata["model_version"],
+        "promoted": True,
+        "decision": "baseline_bootstrap",
+    }
+    (metrics_path.parent / "baseline_promotion.json").write_text(
+        json.dumps(result, indent=2) + "\n",
+        encoding="utf-8",
     )
     return result
 

@@ -99,6 +99,74 @@ def fetch_open_meteo_daily_payload(
     }
 
 
+def ensure_australian_locations(locations: list[WeatherLocation]) -> None:
+    """Reject non-Australian fixtures from the production backfill path."""
+
+    invalid = [
+        location.location
+        for location in locations
+        if not location.timezone.startswith("Australia/")
+    ]
+    if invalid:
+        raise ValueError(
+            "Historical production backfill accepts only Australia/* timezones; "
+            f"received {', '.join(invalid)}."
+        )
+
+
+def chunk_date_range(
+    start_date: date, end_date: date, *, chunk_days: int
+) -> list[tuple[date, date]]:
+    """Partition an inclusive date interval into contiguous non-overlapping chunks."""
+
+    if chunk_days < 1:
+        raise ValueError("chunk_days must be positive.")
+    if end_date < start_date:
+        raise ValueError("end_date must not precede start_date.")
+    chunks: list[tuple[date, date]] = []
+    current = start_date
+    while current <= end_date:
+        chunk_end = min(current + timedelta(days=chunk_days - 1), end_date)
+        chunks.append((current, chunk_end))
+        current = chunk_end + timedelta(days=1)
+    return chunks
+
+
+def fetch_open_meteo_range_payload(
+    location: WeatherLocation,
+    start_date: date,
+    end_date: date,
+    timeout_seconds: int = 60,
+) -> dict[str, Any]:
+    """Fetch an inclusive historical range plus its next day for final labels."""
+
+    if end_date < start_date:
+        raise ValueError("end_date must not precede start_date.")
+    response = _get_json(
+        ARCHIVE_URL,
+        {
+            "latitude": location.latitude,
+            "longitude": location.longitude,
+            "start_date": start_date.isoformat(),
+            "end_date": (end_date + timedelta(days=1)).isoformat(),
+            "hourly": ",".join(HOURLY_VARIABLES),
+            "daily": ",".join(DAILY_VARIABLES),
+            "timezone": location.timezone,
+            "temperature_unit": "celsius",
+            "wind_speed_unit": "kmh",
+            "precipitation_unit": "mm",
+        },
+        timeout_seconds,
+    )
+    return {
+        "provider": "open-meteo",
+        "location": asdict(location),
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat(),
+        "response": response,
+    }
+
+
 def _get_json(
     url: str,
     params: dict[str, Any],
@@ -141,6 +209,23 @@ def _response_detail(response: requests.Response) -> str:
 
 def normalize_open_meteo_payloads(payloads: list[dict[str, Any]]) -> pd.DataFrame:
     rows = [_normalize_payload(payload) for payload in payloads]
+    return pd.DataFrame(rows, columns=WEATHERAUS_COLUMNS)
+
+
+def normalize_open_meteo_range_payloads(payloads: list[dict[str, Any]]) -> pd.DataFrame:
+    """Expand historical range responses into one labeled row per observation day."""
+
+    rows: list[dict[str, Any]] = []
+    for payload in payloads:
+        start_date = date.fromisoformat(payload["start_date"])
+        end_date = date.fromisoformat(payload["end_date"])
+        for observation_date, _chunk_end in chunk_date_range(
+            start_date,
+            end_date,
+            chunk_days=1,
+        ):
+            daily_payload = {**payload, "date": observation_date.isoformat()}
+            rows.append(_normalize_payload(daily_payload))
     return pd.DataFrame(rows, columns=WEATHERAUS_COLUMNS)
 
 

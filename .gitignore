@@ -86,10 +86,12 @@ target/
 /data/raw/*
 !/data/raw/*.dvc
 /data/processed/*
+/data/baseline/
 /models/*.joblib
 !/models/*.dvc
 /reports/metrics/*
 !/reports/metrics/*.dvc
+/reports/baseline/
 /reports/evidently/
 
 # Mac OS-specific storage files
@@ -120,6 +122,7 @@ docker/nginx/certs/
 
 # Local MLflow tracking store (sqlite + artifacts).
 /mlflow-data/
+/mlruns/
 /reports/mlflow_run.json
 
 # internal files

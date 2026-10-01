@@ -62,6 +62,29 @@ def test_verify_model_release_requires_every_release_artifact() -> None:
         verify_model_release(release, client)
 
 
+def test_verify_model_release_discovers_nested_mlflow_artifacts() -> None:
+    class NestedClient(FakeClient):
+        def list_artifacts(self, _run_id: str, path: str | None = None):
+            tree = {
+                None: [
+                    ("joblib", True),
+                    ("metrics", True),
+                    ("dataset", True),
+                    ("lineage", True),
+                ],
+                "joblib": [("joblib/rain_classifier.joblib", False)],
+                "metrics": [("metrics/train.json", False)],
+                "dataset": [("dataset/manifest.json", False)],
+                "lineage": [("lineage/release.json", False)],
+            }
+            return [
+                type("Artifact", (), {"path": artifact_path, "is_dir": is_dir})()
+                for artifact_path, is_dir in tree[path]
+            ]
+
+    verify_model_release(_release(), NestedClient(set()))
+
+
 class FailingCatalog:
     def table(self, _name: str):
         raise ConnectionError("Supabase unavailable")

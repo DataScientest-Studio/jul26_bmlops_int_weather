@@ -76,6 +76,25 @@ def test_api_cannot_write_to_the_dataset():
     assert "./sample_prediction.json:/app/sample_prediction.json:ro" not in volumes
 
 
+def test_baseline_is_an_opt_in_one_shot_job_with_writable_snapshots():
+    service = load_services()["baseline"]
+
+    assert service["profiles"] == ["baseline"]
+    assert service["entrypoint"] == ["python", "-m", "weather_mlops.models.baseline"]
+    assert "./data:/app/data" in service["volumes"]
+    assert "./data:/app/data:ro" not in service["volumes"]
+    assert service["depends_on"]["mlflow"]["condition"] == "service_healthy"
+
+
+def test_baseline_image_contains_its_checked_search_configuration():
+    dockerfile = (PROJECT_ROOT / "docker" / "api" / "Dockerfile").read_text()
+    makefile = (PROJECT_ROOT / "Makefile").read_text()
+
+    assert "COPY params.yaml ./" in dockerfile
+    assert "\nbaseline:" in makefile
+    assert "--profile baseline --profile mlflow run --rm baseline" in makefile
+
+
 def test_api_is_not_published_on_the_host():
     """Public HTTP(S) is Nginx. The API only listens on the Compose network."""
     assert "ports" not in load_services()["api"]

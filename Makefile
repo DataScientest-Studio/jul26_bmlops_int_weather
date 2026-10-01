@@ -16,7 +16,7 @@ export GIT_COMMIT
 
 .PHONY: dvc-check-env dvc-config dvc-pull dvc-push dvc-repro dvc-add-model dvc-commit \
 	build up serve api gateway streamlit mlflow down logs test test-gateway pipeline \
-	train validate evaluate compare predict fetch-open-meteo merge-raw preprocess \
+	train validate evaluate compare baseline predict fetch-open-meteo backfill-open-meteo merge-raw preprocess \
 	load-db register-dataset airflow-up airflow-down airflow-reset monitoring \
 	supabase-migrate supabase-verify vault-put evidently
 
@@ -103,6 +103,12 @@ reconcile-model-catalog:
 train: serve
 	$(COMPOSE) run --rm --no-deps -e API_URL="$(API_URL)" -e TRAIN_PARAMS='$(TRAIN_PARAMS)' --entrypoint python api scripts/train_via_api.py
 
+# First production model only: tune Kaggle on frozen validation, refit all Kaggle rows,
+# evaluate the untouched test set, and bootstrap the empty MLflow champion alias.
+baseline:
+	$(MAKE) mlflow
+	$(LOCAL_ENV) uv run python scripts/with_vault_env.py --s3 $(COMPOSE) --profile baseline --profile mlflow run --rm baseline
+
 validate:
 	$(COMPOSE) run --rm --no-deps --entrypoint python api -m weather_mlops.models.evaluation --x-data data/processed/X_validation.csv --y-data data/processed/y_validation.csv --metrics-output reports/metrics/validation.json --split-name validation
 
@@ -118,6 +124,11 @@ predict: serve
 fetch-open-meteo:
 	@test -n "$(OPEN_METEO_DATE)" || (echo "Usage: make fetch-open-meteo OPEN_METEO_DATE=2026-09-01"; exit 1)
 	$(COMPOSE) run --rm --no-deps -e OPEN_METEO_DATE="$(OPEN_METEO_DATE)" --entrypoint python ingestion scripts/fetch_open_meteo_daily.py --date "$(OPEN_METEO_DATE)"
+
+# Historical Australia-only gap fill. Resumes when both chunk JSON and CSV exist.
+# Override ARGS, for example: ARGS='--end 2025-12-31 --chunk-days 30'.
+backfill-open-meteo:
+	$(COMPOSE) run --rm --no-deps --entrypoint python ingestion scripts/backfill_open_meteo.py $(ARGS)
 
 merge-raw:
 	$(COMPOSE) run --rm --no-deps --entrypoint python ingestion -m weather_mlops.data.merge_raw
