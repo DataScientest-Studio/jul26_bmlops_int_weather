@@ -92,7 +92,7 @@ def test_baseline_image_contains_its_checked_search_configuration():
 
     assert "COPY params.yaml ./" in dockerfile
     assert "\nbaseline:" in makefile
-    assert "--profile baseline --profile mlflow run --rm baseline" in makefile
+    assert "--profile baseline --profile mlflow run --rm --build baseline" in makefile
 
 
 def test_api_is_not_published_on_the_host():

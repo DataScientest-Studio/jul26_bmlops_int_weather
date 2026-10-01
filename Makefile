@@ -58,7 +58,7 @@ up:
 
 serve:
 	$(MAKE) mlflow
-	$(COMPOSE) up -d --build --no-deps --wait api
+	$(LOCAL_ENV) uv run python scripts/with_vault_env.py $(COMPOSE) up -d --build --no-deps --wait api
 	$(COMPOSE) --profile gateway up -d --build --force-recreate --no-deps nginx
 
 api: serve
@@ -80,12 +80,12 @@ logs:
 	$(COMPOSE) logs -f $(SERVICE)
 
 test:
-	$(COMPOSE) up -d --build --no-deps api
+	$(LOCAL_ENV) uv run python scripts/with_vault_env.py $(COMPOSE) up -d --build --no-deps --wait api
 	$(COMPOSE) --profile gateway up -d --build --force-recreate --no-deps nginx
 	$(COMPOSE) --profile test run --rm --build -e GATEWAY_URL=https://nginx test
 
 test-gateway:
-	$(COMPOSE) up -d --build --no-deps api
+	$(LOCAL_ENV) uv run python scripts/with_vault_env.py $(COMPOSE) up -d --build --no-deps --wait api
 	$(COMPOSE) --profile gateway up -d --build --force-recreate --no-deps nginx
 	$(COMPOSE) --profile test run --rm --build -e GATEWAY_URL=https://nginx --entrypoint pytest test -v tests/integration/test_nginx_live.py
 
