@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 from typing import Any
 
 import pandas as pd
@@ -29,3 +30,18 @@ def reconcile_prediction_outcomes(rows: pd.DataFrame, client: Any) -> int:
         )
         updated += 1
     return updated
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Reconcile mature prediction outcomes.")
+    parser.add_argument("--input", type=str, default=str(settings.raw_data_path))
+    args = parser.parse_args()
+    from weather_mlops.data.database import get_supabase_client
+
+    rows = pd.read_csv(args.input)
+    updated = reconcile_prediction_outcomes(rows, get_supabase_client())
+    print(f"Reconciled {updated} prediction outcomes.")
+
+
+if __name__ == "__main__":
+    main()
