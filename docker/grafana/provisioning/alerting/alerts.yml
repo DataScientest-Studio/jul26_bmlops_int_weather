@@ -334,8 +334,6 @@ groups:
             summary: Share of rain predictions over the last 24h is below 5 percent or above 60 percent. Possible data drift.
           labels:
             severity: warning
-            action: retrain
           isPaused: false
           notification_settings:
-            receiver: airflow-retrain
-            repeat_interval: 24h
+            receiver: empty
