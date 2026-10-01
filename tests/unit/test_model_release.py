@@ -69,3 +69,10 @@ class FailingCatalog:
 
 def test_catalog_sync_reports_pending_when_the_mirror_is_unavailable() -> None:
     assert sync_release_to_catalog(_release(), FailingCatalog()) == "pending"
+
+
+def test_catalog_sync_reports_pending_when_supabase_is_not_configured(monkeypatch) -> None:
+    monkeypatch.setattr("weather_mlops.data.database.settings.supabase_url", None)
+    monkeypatch.setattr("weather_mlops.data.database.settings.supabase_key", None)
+
+    assert sync_release_to_catalog(_release(), None) == "pending"

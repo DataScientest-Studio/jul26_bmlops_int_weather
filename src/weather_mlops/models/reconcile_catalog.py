@@ -12,6 +12,9 @@ from weather_mlops.data.database import store_model_version
 def reconcile_model_catalog(release: dict[str, Any], catalog_client: Any) -> None:
     """Idempotently mirror a verified MLflow release; aliases remain in MLflow."""
 
+    if catalog_client is None and not (settings.supabase_url and settings.supabase_key):
+        raise RuntimeError("Supabase catalog credentials are not configured")
+
     store_model_version(
         {
             "mlflow_run_id": release["run_id"],
