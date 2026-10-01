@@ -502,6 +502,7 @@ def run_baseline(
         metrics_path=validation_metrics_path,
         model_source_path=model_output_path,
         selection_processed_dir=selection_dir,
+        run_metadata=model_metadata,
     )
     return {
         "selection_run_id": selection_run_id,

@@ -188,6 +188,41 @@ def test_baseline_bootstrap_promotes_the_first_refit_without_candidate_guardrail
     )
 
 
+def test_baseline_bootstrap_uses_the_explicit_refit_release_metadata(tmp_path, monkeypatch) -> None:
+    fake = FakeClient()
+    model_path = tmp_path / "rain_classifier.joblib"
+    model_path.write_bytes(b"model")
+    _patch_compare(
+        tmp_path,
+        monkeypatch,
+        _metrics(model_path, run_id="refit-run"),
+        {"run_id": "stale-run", "model_version": "1"},
+        fake,
+    )
+    refit_metadata = {
+        "run_id": "refit-run",
+        "model_version": "2",
+        "model_sha256": hash_file(model_path, "sha256"),
+        "release": {
+            "run_id": "refit-run",
+            "model_version": "2",
+            "model_uri": "models:/weather-rainfall-classifier/2",
+            "artifact_uri": "runs:/refit-run/model",
+            "model_sha256": hash_file(model_path, "sha256"),
+            "dataset_sha256": "dataset-sha",
+            "git_commit": "abc123",
+            "preprocessing_version": "2026.09.15",
+            "split": {},
+        },
+    }
+    fake.get_model_version = lambda _name, _version: SimpleNamespace(run_id="refit-run")
+
+    result = comparison.promote_baseline_champion(run_metadata=refit_metadata)
+
+    assert result["run_id"] == "refit-run"
+    assert fake.aliases[("weather-rainfall-classifier", "champion")] == "2"
+
+
 def test_compare_keeps_champion_when_roc_auc_does_not_improve(tmp_path, monkeypatch) -> None:
     champion = SimpleNamespace(run_id="run-0", version="1")
     fake = FakeClient(champion=champion)

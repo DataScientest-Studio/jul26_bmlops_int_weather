@@ -245,6 +245,7 @@ def promote_baseline_champion(
     model_source_path: Path | None = None,
     catalog_client: Any | None = None,
     selection_processed_dir: Path | None = None,
+    run_metadata: dict[str, Any] | None = None,
 ) -> dict:
     """Install the verified full-Kaggle baseline as the one allowed first champion.
 
@@ -262,7 +263,16 @@ def promote_baseline_champion(
     if not model_source_path.exists():
         raise FileNotFoundError(f"No trained model at {model_source_path}. Train first.")
 
-    run_metadata = _require_matching_run(model_source_path)
+    if run_metadata is None:
+        run_metadata = _require_matching_run(model_source_path)
+    else:
+        expected = run_metadata.get("model_sha256")
+        actual = hash_file(model_source_path, "sha256")
+        if expected and expected != actual:
+            raise RuntimeError(
+                "Provided MLflow run metadata does not match the current joblib. "
+                "Retrain with MLflow reachable so validation cannot attach to an old run."
+            )
     payload = _load_payload(metrics_path)
     _require_matching_evaluation(
         payload,
