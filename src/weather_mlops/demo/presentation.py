@@ -80,7 +80,7 @@ CUTOFFS = [
 SECTIONS = [
     {
         "presenter": "Gabriel",
-        "title": "Problem, architecture and gateway",
+        "title": "Problem, drift, architecture and gateway",
         "minutes": 5,
         "slides": [
             {
@@ -99,7 +99,7 @@ SECTIONS = [
                     "station? The model is the small part. The talk is about the machinery "
                     "around it: data, versioning, tracking, serving, security, "
                     "orchestration and CI/CD.",
-                    "I cover the problem, the architecture and the gateway. Then Jonathan "
+                    "I cover the problem, drift, the architecture and the gateway. Then Jonathan "
                     "on data and model, Thomas on serving and operations, and Ziad with the "
                     "live demo.",
                 ],
@@ -141,6 +141,48 @@ SECTIONS = [
                 ],
             },
             {
+                "id": "drift",
+                "title": "Same model, rainy city",
+                "layout": "hero",
+                "stages": [],
+                "figure": ["0.87 to 0.70", "ROC-AUC, Australia test set vs Singapore"],
+                "lanes": [],
+                "points": [
+                    "Singapore: rain tomorrow on 82.6% of days, Australia 22.9%.",
+                    "Evidently flags drift on all 5 monitored columns.",
+                    "Retraining on Singapore 2014-2021 helps, but only a little.",
+                ],
+                "facts": [
+                    ["AU model, Singapore 2022-24", "0.641"],
+                    ["Retrained on Singapore only", "0.703"],
+                    ["Retrained on AU + Singapore", "0.708"],
+                    ["AU + Singapore, AU test set", "0.867"],
+                ],
+                "links": [
+                    ["Merge Singapore", "scripts/merge_singapore.py"],
+                    ["Score and retrain", "scripts/score_drift.py"],
+                ],
+                "notes": [
+                    "About 1 minute.",
+                    "To test drift we needed a rainy place with the same columns. "
+                    "Singapore from Open-Meteo, 2014 to 2024, 4,007 days, same "
+                    "23-column schema as WeatherAUS.",
+                    "Evidently compares it with X_train: Location, MinTemp, Humidity3pm, "
+                    "Pressure3pm and RainToday all drift.",
+                    "The model ranks Singapore days much worse: ROC-AUC 0.87 on the "
+                    "Australian test set, 0.70 on Singapore.",
+                    "Retraining: we train on Singapore 2014 to 2021 and test on 2022 "
+                    "to 2024. The Australian model gets 0.641 there, retrained on "
+                    "Singapore 0.703, on Australia plus Singapore 0.708.",
+                    "Adding Singapore does not hurt Australia: 0.867 on the Australian "
+                    "test set, same as before.",
+                    "Why only a little better: it rains almost every day, so the "
+                    "measurements we have do not separate rainy and dry days well.",
+                    "The retrained models are not saved or promoted. This is an "
+                    "experiment to show drift, the champion stays the Australian model.",
+                ],
+            },
+            {
                 "id": "architecture",
                 "title": "Two pipelines, one registry",
                 "layout": "architecture",
@@ -159,7 +201,7 @@ SECTIONS = [
                     ["Airflow DAG", "airflow/dags/weather_dag.py"],
                 ],
                 "notes": [
-                    "About 1.5 minutes.",
+                    "About 1 minute.",
                     "Training writes a candidate to the MLflow registry. Prediction loads "
                     "the version holding the champion alias, or the local model file when "
                     "there is none.",
@@ -205,7 +247,7 @@ SECTIONS = [
                     ["Live tests", "tests/integration/test_nginx_live.py"],
                 ],
                 "notes": [
-                    "About 2 minutes. Then hand over to Jonathan.",
+                    "About 1.5 minutes. Then hand over to Jonathan.",
                     "Why a gateway: the API container has no published port. Nginx is the "
                     "only service on ports 80 and 443. MLflow and Streamlit bind to "
                     "127.0.0.1 only, so they are not reachable from the network.",
