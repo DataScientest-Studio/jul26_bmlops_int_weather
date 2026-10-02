@@ -11,6 +11,7 @@ from weather_mlops.data.open_meteo import (
     chunk_date_range,
     ensure_australian_locations,
     fetch_open_meteo_range_payload,
+    fetch_open_meteo_range_payloads,
     normalize_open_meteo_payloads,
     normalize_open_meteo_range_payloads,
     read_locations,
@@ -226,6 +227,30 @@ def test_range_fetch_includes_one_future_day_for_the_final_label(monkeypatch) ->
     assert payload["end_date"] == "2017-09-24"
     assert captured["start_date"] == "2017-06-27"
     assert captured["end_date"] == "2017-09-25"
+
+
+def test_range_batch_fetches_locations_in_one_archive_request(monkeypatch) -> None:
+    captured = {}
+
+    def fake_get_json(_url, params, _timeout):
+        captured.update(params)
+        return [{"daily": {}}, {"daily": {}}]
+
+    monkeypatch.setattr("weather_mlops.data.open_meteo._get_json", fake_get_json)
+
+    payloads = fetch_open_meteo_range_payloads(
+        [
+            WeatherLocation("Sydney", -33.8, 151.2, "Australia/Sydney"),
+            WeatherLocation("Perth", -31.9, 115.9, "Australia/Perth"),
+        ],
+        date(2017, 6, 27),
+        date(2017, 9, 24),
+    )
+
+    assert captured["latitude"] == "-33.8,-31.9"
+    assert captured["longitude"] == "151.2,115.9"
+    assert captured["timezone"] == "Australia/Sydney,Australia/Perth"
+    assert [payload["location"]["location"] for payload in payloads] == ["Sydney", "Perth"]
 
 
 def test_normalize_range_payloads_emits_each_observation_day_but_not_label_day() -> None:

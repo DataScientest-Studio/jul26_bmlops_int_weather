@@ -149,38 +149,63 @@ def fetch_open_meteo_range_payload(
 ) -> dict[str, Any]:
     """Fetch an inclusive historical range plus its next day for final labels."""
 
+    return fetch_open_meteo_range_payloads(
+        [location], start_date, end_date, timeout_seconds=timeout_seconds
+    )[0]
+
+
+def fetch_open_meteo_range_payloads(
+    locations: list[WeatherLocation],
+    start_date: date,
+    end_date: date,
+    timeout_seconds: int = 60,
+) -> list[dict[str, Any]]:
+    """Fetch a historical range for multiple locations in one archive request."""
+
     if end_date < start_date:
         raise ValueError("end_date must not precede start_date.")
+    if not locations:
+        raise ValueError("At least one location is required.")
     response = _get_json(
         ARCHIVE_URL,
         {
-            "latitude": location.latitude,
-            "longitude": location.longitude,
+            "latitude": ",".join(str(location.latitude) for location in locations),
+            "longitude": ",".join(str(location.longitude) for location in locations),
             "start_date": start_date.isoformat(),
             "end_date": (end_date + timedelta(days=1)).isoformat(),
             "hourly": ",".join(HOURLY_VARIABLES),
             "daily": ",".join(DAILY_VARIABLES),
-            "timezone": location.timezone,
+            "timezone": ",".join(location.timezone for location in locations),
             "temperature_unit": "celsius",
             "wind_speed_unit": "kmh",
             "precipitation_unit": "mm",
         },
         timeout_seconds,
     )
-    return {
-        "provider": "open-meteo",
-        "location": asdict(location),
-        "start_date": start_date.isoformat(),
-        "end_date": end_date.isoformat(),
-        "response": response,
-    }
+    responses = response if isinstance(response, list) else [response]
+    if len(responses) != len(locations) or not all(
+        isinstance(item, dict) for item in responses
+    ):
+        raise OpenMeteoError(
+            "Open-Meteo returned an unexpected number or shape of location responses."
+        )
+    return [
+        {
+            "provider": "open-meteo",
+            "location": asdict(location),
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+            "response": location_response,
+        }
+        for location, location_response in zip(locations, responses, strict=True)
+    ]
 
 
 def _get_json(
     url: str,
     params: dict[str, Any],
     timeout_seconds: int,
-) -> dict[str, Any]:
+) -> dict[str, Any] | list[dict[str, Any]]:
     endpoint = url.rsplit("/", maxsplit=1)[-1]
     for retry in range(RATE_LIMIT_RETRIES + 1):
         try:
@@ -193,9 +218,11 @@ def _get_json(
 
         if response.ok:
             payload = response.json()
-            if isinstance(payload, dict):
+            if isinstance(payload, dict) or (
+                isinstance(payload, list) and all(isinstance(item, dict) for item in payload)
+            ):
                 return payload
-            raise OpenMeteoError("Open-Meteo returned an unexpected non-object JSON response.")
+            raise OpenMeteoError("Open-Meteo returned an unexpected JSON response shape.")
 
         if response.status_code == 429 and retry < RATE_LIMIT_RETRIES:
             wait_seconds = _rate_limit_wait_seconds(response)

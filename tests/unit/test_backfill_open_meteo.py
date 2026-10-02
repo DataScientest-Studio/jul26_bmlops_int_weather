@@ -24,13 +24,16 @@ def test_backfill_range_writes_resumable_australian_chunks(tmp_path) -> None:
     module = _load_backfill_module()
     calls = []
 
-    def fetch(location, start_date, end_date):
-        calls.append((location.location, start_date, end_date))
-        return {
-            "location": {"location": location.location},
-            "start_date": start_date.isoformat(),
-            "end_date": end_date.isoformat(),
-        }
+    def fetch(locations, start_date, end_date):
+        calls.append(([location.location for location in locations], start_date, end_date))
+        return [
+            {
+                "location": {"location": location.location},
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
+            }
+            for location in locations
+        ]
 
     def normalize(payloads):
         return pd.DataFrame(
@@ -46,7 +49,7 @@ def test_backfill_range_writes_resumable_australian_chunks(tmp_path) -> None:
         end_date=date(2017, 6, 30),
         chunk_days=2,
         output_dir=tmp_path,
-        fetch_payload=fetch,
+        fetch_payloads=fetch,
         normalize_payloads=normalize,
     )
 
@@ -61,7 +64,7 @@ def test_backfill_range_writes_resumable_australian_chunks(tmp_path) -> None:
         end_date=date(2017, 6, 30),
         chunk_days=2,
         output_dir=tmp_path,
-        fetch_payload=fetch,
+        fetch_payloads=fetch,
         normalize_payloads=normalize,
     )
 

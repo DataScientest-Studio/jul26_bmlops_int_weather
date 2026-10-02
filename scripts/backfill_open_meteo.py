@@ -16,7 +16,7 @@ from weather_mlops.data.open_meteo import (
     WeatherLocation,
     chunk_date_range,
     ensure_australian_locations,
-    fetch_open_meteo_range_payload,
+    fetch_open_meteo_range_payloads,
     normalize_open_meteo_range_payloads,
     read_locations,
 )
@@ -34,8 +34,8 @@ def backfill_range(
     end_date: date,
     chunk_days: int,
     output_dir: Path,
-    fetch_payload: Callable[[WeatherLocation, date, date], dict[str, Any]] = (
-        fetch_open_meteo_range_payload
+    fetch_payloads: Callable[[list[WeatherLocation], date, date], list[dict[str, Any]]] = (
+        fetch_open_meteo_range_payloads
     ),
     normalize_payloads: Callable[[list[dict[str, Any]]], pd.DataFrame] = (
         normalize_open_meteo_range_payloads
@@ -63,7 +63,7 @@ def backfill_range(
                 }
             )
             continue
-        payloads = [fetch_payload(location, chunk_start, chunk_end) for location in locations]
+        payloads = fetch_payloads(locations, chunk_start, chunk_end)
         normalized = normalize_payloads(payloads)
         json_path.write_text(json.dumps(payloads, indent=2) + "\n", encoding="utf-8")
         normalized.to_csv(csv_path, index=False)
