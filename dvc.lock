@@ -90,54 +90,54 @@ stages:
     deps:
     - path: data/processed/X_test.csv
       hash: md5
-      md5: 6381423b5cb8dd4e381b2eb0d5ea8de8
-      size: 2265860
+      md5: d6490b26648a08623da7bfff1336379a
+      size: 449982
     - path: data/processed/y_test.csv
       hash: md5
-      md5: b706a9b60f3f1f48685a35a49e4d08db
-      size: 49639
+      md5: 03b6fe2cbaa1af4fedb6e648e1b44660
+      size: 8833
     - path: models/rain_classifier.joblib
       hash: md5
-      md5: 6d6f5418c4b74f4c6214b923f60658c3
-      size: 440992
+      md5: ad886852c49de2c56650edb1814c9a8b
+      size: 442023
     - path: src/weather_mlops/config/settings.py
       hash: md5
-      md5: 363c1b853619619ab0a7a6d3d6fa3592
-      size: 2986
+      md5: 765682531a0a04627f9ba3b87179fa8b
+      size: 4453
     - path: src/weather_mlops/models/evaluation.py
       hash: md5
-      md5: a88cb0ff41dfc8a4429f5094c16d73a2
-      size: 2570
+      md5: 6620671d1674b1393ca2fb3a4c98aac9
+      size: 4649
     outs:
     - path: reports/metrics/evaluation.json
       hash: md5
-      md5: f4bc2e082a5c504e09498a7344638ed2
-      size: 210
+      md5: 74c23c55842d838333172ed9e39ef0f4
+      size: 744
   predict_sample:
     cmd: python -m weather_mlops.models.predict --input-json 
       sample_prediction.json --output data/predictions/sample_prediction.json
     deps:
-    - path: models/rain_classifier.joblib
+    - path: models/best_model.joblib
       hash: md5
-      md5: 6d6f5418c4b74f4c6214b923f60658c3
-      size: 440992
+      md5: c0a1042adc7e175eda690441131094c0
+      size: 954868
     - path: sample_prediction.json
       hash: md5
       md5: 1a79f05c00cee13a61b0227450fd6d40
       size: 455
     - path: src/weather_mlops/config/settings.py
       hash: md5
-      md5: 363c1b853619619ab0a7a6d3d6fa3592
-      size: 2986
+      md5: 765682531a0a04627f9ba3b87179fa8b
+      size: 4453
     - path: src/weather_mlops/models/predict.py
       hash: md5
-      md5: e2e73ba3f319206bb9281ec2f12f764e
-      size: 1874
+      md5: 5dcb6b2c6ca297d551cb6ea92fe6b91f
+      size: 7143
     outs:
     - path: data/predictions/sample_prediction.json
       hash: md5
-      md5: a3dc10125e9ef538ec7a13d2f2d3d11d
-      size: 65
+      md5: 00ca85aa3aaf36d7c1010dc7cee98989
+      size: 254
   validate:
     cmd: python -m weather_mlops.models.evaluation --x-data 
       data/processed/X_validation.csv --y-data data/processed/y_validation.csv 
@@ -146,29 +146,29 @@ stages:
     deps:
     - path: data/processed/X_validation.csv
       hash: md5
-      md5: 253ee91f8631590dfbaff18d78813bd4
-      size: 2263464
+      md5: a5c5aece6d791b305183faa6ee94e9ca
+      size: 452617
     - path: data/processed/y_validation.csv
       hash: md5
-      md5: 79d6d0d8dfeb36d199fb6ac32a6f026b
-      size: 48719
+      md5: 4a558e8d102e81a43533e38e51b3a588
+      size: 8833
     - path: models/rain_classifier.joblib
       hash: md5
-      md5: 6d6f5418c4b74f4c6214b923f60658c3
-      size: 440992
+      md5: ad886852c49de2c56650edb1814c9a8b
+      size: 442023
     - path: src/weather_mlops/config/settings.py
       hash: md5
-      md5: 363c1b853619619ab0a7a6d3d6fa3592
-      size: 2986
+      md5: 765682531a0a04627f9ba3b87179fa8b
+      size: 4453
     - path: src/weather_mlops/models/evaluation.py
       hash: md5
-      md5: a88cb0ff41dfc8a4429f5094c16d73a2
-      size: 2570
+      md5: 6620671d1674b1393ca2fb3a4c98aac9
+      size: 4649
     outs:
     - path: reports/metrics/validation.json
       hash: md5
-      md5: e7b4f3c9ab627335211481776059c90f
-      size: 248
+      md5: 8b76071f60f3defb9fe53058db3b4af2
+      size: 867
   merge_raw:
     cmd: python -m weather_mlops.data.merge_raw
     deps:
