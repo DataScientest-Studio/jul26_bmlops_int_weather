@@ -71,7 +71,7 @@ mlflow:
 	$(LOCAL_ENV) uv run python scripts/with_vault_env.py --s3 $(COMPOSE) --profile mlflow up -d --build --wait mlflow
 
 monitoring: serve
-	$(LOCAL_ENV) uv run python scripts/with_vault_env.py --monitoring $(COMPOSE) --profile monitoring up -d prometheus grafana
+	$(LOCAL_ENV) uv run python scripts/with_vault_env.py --monitoring $(COMPOSE) --profile monitoring up -d prometheus pushgateway grafana
 
 down:
 	$(COMPOSE) --profile gateway --profile streamlit --profile test --profile mlflow --profile monitoring down --remove-orphans
