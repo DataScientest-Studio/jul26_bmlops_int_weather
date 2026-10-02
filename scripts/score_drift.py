@@ -4,6 +4,7 @@ import argparse
 
 import joblib
 import pandas as pd
+from sklearn.base import clone
 from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_score
 
 
@@ -23,6 +24,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", default="models/rain_classifier.joblib")
     parser.add_argument("--csv", default="data/raw/weatherSingapore_current.csv")
+    parser.add_argument("--split-date", default="2022-01-01")
     args = parser.parse_args()
 
     model = joblib.load(args.model)
@@ -40,6 +42,30 @@ def main():
     if y_test.dtype == object:
         y_test = (y_test == "Yes").astype(int)
     print_scores("Australia test set", model, X_test, y_test)
+
+    # split singapore by date, old years to train and new years to test
+    is_train = df["Date"] < args.split_date
+    X_sg_train, y_sg_train = X[is_train], y[is_train]
+    X_sg_test, y_sg_test = X[~is_train], y[~is_train]
+    print_scores("AU model on Singapore test years", model, X_sg_test, y_sg_test)
+
+    # same pipeline, but trained again only on singapore
+    sg_model = clone(model)
+    sg_model.fit(X_sg_train, y_sg_train)
+    print_scores("SG model on Singapore test years", sg_model, X_sg_test, y_sg_test)
+
+    # trained again on australia + singapore, like a real retrain with new data
+    X_train = pd.read_csv("data/processed/X_train.csv")
+    y_train = pd.read_csv("data/processed/y_train.csv")["RainTomorrow"]
+    if y_train.dtype == object:
+        y_train = (y_train == "Yes").astype(int)
+    both_model = clone(model)
+    both_model.fit(
+        pd.concat([X_train, X_sg_train], ignore_index=True),
+        pd.concat([y_train, y_sg_train], ignore_index=True),
+    )
+    print_scores("AU+SG model on Singapore test years", both_model, X_sg_test, y_sg_test)
+    print_scores("AU+SG model on Australia test set", both_model, X_test, y_test)
 
 
 if __name__ == "__main__":
