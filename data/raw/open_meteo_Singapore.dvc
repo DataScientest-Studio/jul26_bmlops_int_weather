@@ -1,0 +1,6 @@
+outs:
+- md5: a661d142c544b2cb9908987f4fde3f02.dir
+  size: 451432
+  nfiles: 12
+  hash: md5
+  path: open_meteo_Singapore
