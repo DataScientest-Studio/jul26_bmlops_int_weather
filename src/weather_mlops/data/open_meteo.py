@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import asdict, dataclass
 from datetime import date, timedelta
 from pathlib import Path
@@ -17,6 +18,8 @@ AUSTRALIAN_TIMEZONE_PREFIX = "Australia/"
 # Norfolk Island is an Australian external territory represented by a
 # `Pacific/*` IANA timezone in the WeatherAUS location catalogue.
 AUSTRALIAN_EXTERNAL_TERRITORY_TIMEZONES = {"Pacific/Norfolk"}
+RATE_LIMIT_RETRIES = 5
+DEFAULT_RATE_LIMIT_WAIT_SECONDS = 60.0
 
 HOURLY_VARIABLES = [
     "temperature_2m",
@@ -179,25 +182,48 @@ def _get_json(
     timeout_seconds: int,
 ) -> dict[str, Any]:
     endpoint = url.rsplit("/", maxsplit=1)[-1]
-    try:
-        response = requests.get(url, params=params, timeout=timeout_seconds)
-    except requests.RequestException as error:
+    for retry in range(RATE_LIMIT_RETRIES + 1):
+        try:
+            response = requests.get(url, params=params, timeout=timeout_seconds)
+        except requests.RequestException as error:
+            raise OpenMeteoError(
+                f"Open-Meteo request failed for endpoint '{endpoint}'. "
+                f"Check network access and retry. Details: {error.__class__.__name__}"
+            ) from error
+
+        if response.ok:
+            payload = response.json()
+            if isinstance(payload, dict):
+                return payload
+            raise OpenMeteoError("Open-Meteo returned an unexpected non-object JSON response.")
+
+        if response.status_code == 429 and retry < RATE_LIMIT_RETRIES:
+            wait_seconds = _rate_limit_wait_seconds(response)
+            print(
+                "Open-Meteo rate limit reached; retrying "
+                f"endpoint '{endpoint}' in {wait_seconds:g}s "
+                f"({retry + 1}/{RATE_LIMIT_RETRIES})."
+            )
+            time.sleep(wait_seconds)
+            continue
+
+        detail = _response_detail(response)
         raise OpenMeteoError(
-            f"Open-Meteo request failed for endpoint '{endpoint}'. "
-            f"Check network access and retry. Details: {error.__class__.__name__}"
-        ) from error
+            f"Open-Meteo request failed for endpoint '{endpoint}' "
+            f"(HTTP {response.status_code}). Response: {detail}"
+        )
 
-    if response.ok:
-        payload = response.json()
-        if isinstance(payload, dict):
-            return payload
-        raise OpenMeteoError("Open-Meteo returned an unexpected non-object JSON response.")
+    raise AssertionError("Rate-limit retry loop exited unexpectedly.")
 
-    detail = _response_detail(response)
-    raise OpenMeteoError(
-        f"Open-Meteo request failed for endpoint '{endpoint}' "
-        f"(HTTP {response.status_code}). Response: {detail}"
-    )
+
+def _rate_limit_wait_seconds(response: requests.Response) -> float:
+    retry_after = response.headers.get("Retry-After")
+    if retry_after is None:
+        return DEFAULT_RATE_LIMIT_WAIT_SECONDS
+    try:
+        return max(float(retry_after), 1.0)
+    except ValueError:
+        return DEFAULT_RATE_LIMIT_WAIT_SECONDS
 
 
 def _response_detail(response: requests.Response) -> str:

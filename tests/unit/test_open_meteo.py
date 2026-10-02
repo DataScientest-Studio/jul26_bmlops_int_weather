@@ -122,6 +122,34 @@ def test_get_json_reports_open_meteo_errors(monkeypatch) -> None:
         raise AssertionError("Expected invalid Open-Meteo request to fail.")
 
 
+def test_get_json_retries_rate_limits_using_retry_after(monkeypatch) -> None:
+    class RateLimitedResponse:
+        ok = False
+        status_code = 429
+        headers = {"Retry-After": "2"}
+        text = '{"reason":"Minutely API request limit exceeded"}'
+
+        def json(self) -> dict[str, str]:
+            return {"reason": "Minutely API request limit exceeded"}
+
+    class SuccessResponse:
+        ok = True
+        status_code = 200
+
+        def json(self) -> dict[str, str]:
+            return {"ok": "yes"}
+
+    responses = iter((RateLimitedResponse(), SuccessResponse()))
+    waits: list[float] = []
+    monkeypatch.setattr(
+        "weather_mlops.data.open_meteo.requests.get", lambda *args, **kwargs: next(responses)
+    )
+    monkeypatch.setattr("weather_mlops.data.open_meteo.time.sleep", waits.append)
+
+    assert _get_json("https://archive-api.open-meteo.com/v1/archive", {}, 30) == {"ok": "yes"}
+    assert waits == [2.0]
+
+
 def test_get_json_wraps_network_errors(monkeypatch) -> None:
     def fake_get(*args, **kwargs):
         raise requests.ConnectionError("network blocked")
