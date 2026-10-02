@@ -274,6 +274,32 @@ def test_compare_keeps_champion_when_roc_auc_does_not_improve(tmp_path, monkeypa
     assert fake.aliases == {}
 
 
+def test_compare_refuses_to_promote_when_champion_metric_is_missing(tmp_path, monkeypatch) -> None:
+    champion = SimpleNamespace(run_id="run-0", version="1")
+    fake = FakeClient(champion=champion)
+    fake.runs["run-0"] = SimpleNamespace(
+        info=SimpleNamespace(run_id="run-0"),
+        data=SimpleNamespace(metrics={}),
+    )
+    model_path = tmp_path / "rain_classifier.joblib"
+    model_path.write_bytes(b"model")
+    _patch_compare(
+        tmp_path,
+        monkeypatch,
+        _metrics(model_path, validation_roc_auc=0.95, validation_recall=0.80),
+        {"run_id": "run-1", "model_version": "2"},
+        fake,
+    )
+
+    try:
+        comparison.compare_models()
+        raise AssertionError("a champion without its selection metric must block promotion")
+    except RuntimeError as exc:
+        assert "Champion is missing" in str(exc)
+    assert fake.aliases == {}
+    assert fake.tags == {}
+
+
 def test_compare_refuses_stale_run_metadata(tmp_path, monkeypatch) -> None:
     fake = FakeClient()
     model_path = tmp_path / "rain_classifier.joblib"

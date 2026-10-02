@@ -185,7 +185,15 @@ def compare_models(
     champion = _load_champion(client)
     if champion is not None:
         champion_run = client.get_run(champion.run_id)
-        current_best = float(champion_run.data.metrics.get(settings.mlflow_primary_metric) or 0.0)
+        champion_score = champion_run.data.metrics.get(settings.mlflow_primary_metric)
+        if champion_score is None:
+            raise RuntimeError(
+                "Champion is missing the "
+                f"{settings.mlflow_primary_metric!r} metric. Refusing to compare or "
+                "promote a candidate until the champion's immutable validation evidence "
+                "has been reconciled."
+            )
+        current_best = float(champion_score)
 
     promote = passed_guardrail and (champion is None or candidate_score > current_best)
     if promote:
