@@ -173,6 +173,12 @@ def test_australian_backfill_rejects_non_australian_locations() -> None:
         )
 
 
+def test_australian_backfill_allows_norfolk_island() -> None:
+    ensure_australian_locations(
+        [WeatherLocation("NorfolkIsland", -29.0408, 167.9547, "Pacific/Norfolk")]
+    )
+
+
 def test_range_fetch_includes_one_future_day_for_the_final_label(monkeypatch) -> None:
     captured = {}
 

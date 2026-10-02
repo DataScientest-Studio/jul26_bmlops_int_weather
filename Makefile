@@ -128,7 +128,7 @@ fetch-open-meteo:
 # Historical Australia-only gap fill. Resumes when both chunk JSON and CSV exist.
 # Override ARGS, for example: ARGS='--end 2025-12-31 --chunk-days 30'.
 backfill-open-meteo:
-	$(COMPOSE) run --rm --no-deps --entrypoint python ingestion scripts/backfill_open_meteo.py $(ARGS)
+	$(COMPOSE) run --rm --no-deps --build --entrypoint python ingestion scripts/backfill_open_meteo.py $(ARGS)
 
 merge-raw:
 	$(COMPOSE) run --rm --no-deps --entrypoint python ingestion -m weather_mlops.data.merge_raw

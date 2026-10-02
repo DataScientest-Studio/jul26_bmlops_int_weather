@@ -13,6 +13,10 @@ from weather_mlops.data.weatheraus_schema import WEATHERAUS_COLUMNS
 
 ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 RAIN_THRESHOLD_MM = 1.0
+AUSTRALIAN_TIMEZONE_PREFIX = "Australia/"
+# Norfolk Island is an Australian external territory represented by a
+# `Pacific/*` IANA timezone in the WeatherAUS location catalogue.
+AUSTRALIAN_EXTERNAL_TERRITORY_TIMEZONES = {"Pacific/Norfolk"}
 
 HOURLY_VARIABLES = [
     "temperature_2m",
@@ -105,11 +109,13 @@ def ensure_australian_locations(locations: list[WeatherLocation]) -> None:
     invalid = [
         location.location
         for location in locations
-        if not location.timezone.startswith("Australia/")
+        if not location.timezone.startswith(AUSTRALIAN_TIMEZONE_PREFIX)
+        and location.timezone not in AUSTRALIAN_EXTERNAL_TERRITORY_TIMEZONES
     ]
     if invalid:
         raise ValueError(
-            "Historical production backfill accepts only Australia/* timezones; "
+            "Historical production backfill accepts Australian timezones and "
+            "approved Australian external territories; "
             f"received {', '.join(invalid)}."
         )
 
