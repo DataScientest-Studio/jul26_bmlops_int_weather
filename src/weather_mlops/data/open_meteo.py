@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import asdict, dataclass
 from datetime import date, timedelta
 from pathlib import Path
@@ -13,6 +14,12 @@ from weather_mlops.data.weatheraus_schema import WEATHERAUS_COLUMNS
 
 ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 RAIN_THRESHOLD_MM = 1.0
+AUSTRALIAN_TIMEZONE_PREFIX = "Australia/"
+# Norfolk Island is an Australian external territory represented by a
+# `Pacific/*` IANA timezone in the WeatherAUS location catalogue.
+AUSTRALIAN_EXTERNAL_TERRITORY_TIMEZONES = {"Pacific/Norfolk"}
+RATE_LIMIT_RETRIES = 5
+DEFAULT_RATE_LIMIT_WAIT_SECONDS = 60.0
 
 HOURLY_VARIABLES = [
     "temperature_2m",
@@ -99,31 +106,149 @@ def fetch_open_meteo_daily_payload(
     }
 
 
+def ensure_australian_locations(locations: list[WeatherLocation]) -> None:
+    """Reject non-Australian fixtures from the production backfill path."""
+
+    invalid = [
+        location.location
+        for location in locations
+        if not location.timezone.startswith(AUSTRALIAN_TIMEZONE_PREFIX)
+        and location.timezone not in AUSTRALIAN_EXTERNAL_TERRITORY_TIMEZONES
+    ]
+    if invalid:
+        raise ValueError(
+            "Historical production backfill accepts Australian timezones and "
+            "approved Australian external territories; "
+            f"received {', '.join(invalid)}."
+        )
+
+
+def chunk_date_range(
+    start_date: date, end_date: date, *, chunk_days: int
+) -> list[tuple[date, date]]:
+    """Partition an inclusive date interval into contiguous non-overlapping chunks."""
+
+    if chunk_days < 1:
+        raise ValueError("chunk_days must be positive.")
+    if end_date < start_date:
+        raise ValueError("end_date must not precede start_date.")
+    chunks: list[tuple[date, date]] = []
+    current = start_date
+    while current <= end_date:
+        chunk_end = min(current + timedelta(days=chunk_days - 1), end_date)
+        chunks.append((current, chunk_end))
+        current = chunk_end + timedelta(days=1)
+    return chunks
+
+
+def fetch_open_meteo_range_payload(
+    location: WeatherLocation,
+    start_date: date,
+    end_date: date,
+    timeout_seconds: int = 60,
+) -> dict[str, Any]:
+    """Fetch an inclusive historical range plus its next day for final labels."""
+
+    return fetch_open_meteo_range_payloads(
+        [location], start_date, end_date, timeout_seconds=timeout_seconds
+    )[0]
+
+
+def fetch_open_meteo_range_payloads(
+    locations: list[WeatherLocation],
+    start_date: date,
+    end_date: date,
+    timeout_seconds: int = 60,
+) -> list[dict[str, Any]]:
+    """Fetch a historical range for multiple locations in one archive request."""
+
+    if end_date < start_date:
+        raise ValueError("end_date must not precede start_date.")
+    if not locations:
+        raise ValueError("At least one location is required.")
+    response = _get_json(
+        ARCHIVE_URL,
+        {
+            "latitude": ",".join(str(location.latitude) for location in locations),
+            "longitude": ",".join(str(location.longitude) for location in locations),
+            "start_date": start_date.isoformat(),
+            "end_date": (end_date + timedelta(days=1)).isoformat(),
+            "hourly": ",".join(HOURLY_VARIABLES),
+            "daily": ",".join(DAILY_VARIABLES),
+            "timezone": ",".join(location.timezone for location in locations),
+            "temperature_unit": "celsius",
+            "wind_speed_unit": "kmh",
+            "precipitation_unit": "mm",
+        },
+        timeout_seconds,
+    )
+    responses = response if isinstance(response, list) else [response]
+    if len(responses) != len(locations) or not all(isinstance(item, dict) for item in responses):
+        raise OpenMeteoError(
+            "Open-Meteo returned an unexpected number or shape of location responses."
+        )
+    return [
+        {
+            "provider": "open-meteo",
+            "location": asdict(location),
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+            "response": location_response,
+        }
+        for location, location_response in zip(locations, responses, strict=True)
+    ]
+
+
 def _get_json(
     url: str,
     params: dict[str, Any],
     timeout_seconds: int,
-) -> dict[str, Any]:
+) -> dict[str, Any] | list[dict[str, Any]]:
     endpoint = url.rsplit("/", maxsplit=1)[-1]
-    try:
-        response = requests.get(url, params=params, timeout=timeout_seconds)
-    except requests.RequestException as error:
+    for retry in range(RATE_LIMIT_RETRIES + 1):
+        try:
+            response = requests.get(url, params=params, timeout=timeout_seconds)
+        except requests.RequestException as error:
+            raise OpenMeteoError(
+                f"Open-Meteo request failed for endpoint '{endpoint}'. "
+                f"Check network access and retry. Details: {error.__class__.__name__}"
+            ) from error
+
+        if response.ok:
+            payload = response.json()
+            if isinstance(payload, dict) or (
+                isinstance(payload, list) and all(isinstance(item, dict) for item in payload)
+            ):
+                return payload
+            raise OpenMeteoError("Open-Meteo returned an unexpected JSON response shape.")
+
+        if response.status_code == 429 and retry < RATE_LIMIT_RETRIES:
+            wait_seconds = _rate_limit_wait_seconds(response)
+            print(
+                "Open-Meteo rate limit reached; retrying "
+                f"endpoint '{endpoint}' in {wait_seconds:g}s "
+                f"({retry + 1}/{RATE_LIMIT_RETRIES})."
+            )
+            time.sleep(wait_seconds)
+            continue
+
+        detail = _response_detail(response)
         raise OpenMeteoError(
-            f"Open-Meteo request failed for endpoint '{endpoint}'. "
-            f"Check network access and retry. Details: {error.__class__.__name__}"
-        ) from error
+            f"Open-Meteo request failed for endpoint '{endpoint}' "
+            f"(HTTP {response.status_code}). Response: {detail}"
+        )
 
-    if response.ok:
-        payload = response.json()
-        if isinstance(payload, dict):
-            return payload
-        raise OpenMeteoError("Open-Meteo returned an unexpected non-object JSON response.")
+    raise AssertionError("Rate-limit retry loop exited unexpectedly.")
 
-    detail = _response_detail(response)
-    raise OpenMeteoError(
-        f"Open-Meteo request failed for endpoint '{endpoint}' "
-        f"(HTTP {response.status_code}). Response: {detail}"
-    )
+
+def _rate_limit_wait_seconds(response: requests.Response) -> float:
+    retry_after = response.headers.get("Retry-After")
+    if retry_after is None:
+        return DEFAULT_RATE_LIMIT_WAIT_SECONDS
+    try:
+        return max(float(retry_after), 1.0)
+    except ValueError:
+        return DEFAULT_RATE_LIMIT_WAIT_SECONDS
 
 
 def _response_detail(response: requests.Response) -> str:
@@ -141,6 +266,23 @@ def _response_detail(response: requests.Response) -> str:
 
 def normalize_open_meteo_payloads(payloads: list[dict[str, Any]]) -> pd.DataFrame:
     rows = [_normalize_payload(payload) for payload in payloads]
+    return pd.DataFrame(rows, columns=WEATHERAUS_COLUMNS)
+
+
+def normalize_open_meteo_range_payloads(payloads: list[dict[str, Any]]) -> pd.DataFrame:
+    """Expand historical range responses into one labeled row per observation day."""
+
+    rows: list[dict[str, Any]] = []
+    for payload in payloads:
+        start_date = date.fromisoformat(payload["start_date"])
+        end_date = date.fromisoformat(payload["end_date"])
+        for observation_date, _chunk_end in chunk_date_range(
+            start_date,
+            end_date,
+            chunk_days=1,
+        ):
+            daily_payload = {**payload, "date": observation_date.isoformat()}
+            rows.append(_normalize_payload(daily_payload))
     return pd.DataFrame(rows, columns=WEATHERAUS_COLUMNS)
 
 

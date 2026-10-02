@@ -168,7 +168,6 @@ def test_simulate_cli_writes_html(tmp_path: Path, monkeypatch) -> None:
     assert result["performance"] is None
 
 
-
 def test_singapore_csv_is_drifted(tmp_path: Path, monkeypatch) -> None:
     reference_path = tmp_path / "X_train.csv"
     _sample_frame().to_csv(reference_path, index=False)

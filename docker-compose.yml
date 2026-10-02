@@ -67,6 +67,34 @@ services:
       retries: 5
       start_period: 15s
 
+  # One-time bootstrap: writes immutable Kaggle selection/refit snapshots,
+  # then registers the first full-data champion. Later retraining remains POST /train.
+  baseline:
+    profiles: ["baseline"]
+    build:
+      context: .
+      dockerfile: docker/api/Dockerfile
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-}
+    image: weather-api:latest
+    networks:
+      - weather_network
+    environment:
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_KEY: ${SUPABASE_KEY:-}
+      GIT_COMMIT: ${GIT_COMMIT:-}
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-http://mlflow:8080}
+      API_AUTH_USER: ${API_AUTH_USER:-}
+      API_AUTH_PASSWORD: ${API_AUTH_PASSWORD:-}
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./reports:/app/reports
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    entrypoint: ["python", "-m", "weather_mlops.models.baseline"]
+
   nginx:
     profiles: ["gateway"]
     build:
@@ -173,6 +201,14 @@ services:
     volumes:
       - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
+
+  pushgateway:
+    profiles: ["monitoring"]
+    image: prom/pushgateway:v1.11.1
+    networks:
+      - weather_network
+    ports:
+      - "127.0.0.1:9091:9091"
 
   grafana:
     profiles: ["monitoring"]

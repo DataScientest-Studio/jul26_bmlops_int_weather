@@ -16,9 +16,11 @@ export GIT_COMMIT
 
 .PHONY: dvc-check-env dvc-config dvc-pull dvc-push dvc-repro dvc-add-model dvc-commit \
 	build up serve api gateway streamlit mlflow down logs test test-gateway pipeline \
-	train validate evaluate compare predict fetch-open-meteo merge-raw preprocess \
+	train validate evaluate compare baseline predict fetch-open-meteo backfill-open-meteo merge-raw preprocess \
 	load-db register-dataset airflow-up airflow-down airflow-reset monitoring \
 	supabase-migrate supabase-verify vault-put evidently
+
+.PHONY: reconcile-model-catalog
 
 # --- DVC stays on the host (Git pointers + local cache). Everything else is Compose. ---
 
@@ -56,7 +58,7 @@ up:
 
 serve:
 	$(MAKE) mlflow
-	$(COMPOSE) up -d --build --no-deps --wait api
+	$(LOCAL_ENV) uv run python scripts/with_vault_env.py $(COMPOSE) up -d --build --no-deps --wait api
 	$(COMPOSE) --profile gateway up -d --build --force-recreate --no-deps nginx
 
 api: serve
@@ -69,7 +71,7 @@ mlflow:
 	$(LOCAL_ENV) uv run python scripts/with_vault_env.py --s3 $(COMPOSE) --profile mlflow up -d --build --wait mlflow
 
 monitoring: serve
-	$(COMPOSE) --profile monitoring up -d prometheus grafana
+	$(LOCAL_ENV) uv run python scripts/with_vault_env.py --monitoring $(COMPOSE) --profile monitoring up -d prometheus pushgateway grafana
 
 down:
 	$(COMPOSE) --profile gateway --profile streamlit --profile test --profile mlflow --profile monitoring down --remove-orphans
@@ -78,12 +80,12 @@ logs:
 	$(COMPOSE) logs -f $(SERVICE)
 
 test:
-	$(COMPOSE) up -d --build --no-deps api
+	$(LOCAL_ENV) uv run python scripts/with_vault_env.py $(COMPOSE) up -d --build --no-deps --wait api
 	$(COMPOSE) --profile gateway up -d --build --force-recreate --no-deps nginx
 	$(COMPOSE) --profile test run --rm --build -e GATEWAY_URL=https://nginx test
 
 test-gateway:
-	$(COMPOSE) up -d --build --no-deps api
+	$(LOCAL_ENV) uv run python scripts/with_vault_env.py $(COMPOSE) up -d --build --no-deps --wait api
 	$(COMPOSE) --profile gateway up -d --build --force-recreate --no-deps nginx
 	$(COMPOSE) --profile test run --rm --build -e GATEWAY_URL=https://nginx --entrypoint pytest test -v tests/integration/test_nginx_live.py
 
@@ -95,8 +97,17 @@ pipeline: train
 compare:
 	$(COMPOSE) run --rm --no-deps --entrypoint python api -m weather_mlops.models.comparison
 
+reconcile-model-catalog:
+	$(LOCAL_ENV) uv run python -m weather_mlops.models.reconcile_catalog $(if $(RUN_ID),--run-id $(RUN_ID))
+
 train: serve
 	$(COMPOSE) run --rm --no-deps -e API_URL="$(API_URL)" -e TRAIN_PARAMS='$(TRAIN_PARAMS)' --entrypoint python api scripts/train_via_api.py
+
+# First production model only: tune Kaggle on frozen validation, refit all Kaggle rows,
+# evaluate the untouched test set, and bootstrap the empty MLflow champion alias.
+baseline:
+	$(MAKE) mlflow
+	$(LOCAL_ENV) uv run python scripts/with_vault_env.py --s3 $(COMPOSE) --profile baseline --profile mlflow run --rm --build baseline
 
 validate:
 	$(COMPOSE) run --rm --no-deps --entrypoint python api -m weather_mlops.models.evaluation --x-data data/processed/X_validation.csv --y-data data/processed/y_validation.csv --metrics-output reports/metrics/validation.json --split-name validation
@@ -114,6 +125,11 @@ fetch-open-meteo:
 	@test -n "$(OPEN_METEO_DATE)" || (echo "Usage: make fetch-open-meteo OPEN_METEO_DATE=2026-09-01"; exit 1)
 	$(COMPOSE) run --rm --no-deps -e OPEN_METEO_DATE="$(OPEN_METEO_DATE)" --entrypoint python ingestion scripts/fetch_open_meteo_daily.py --date "$(OPEN_METEO_DATE)"
 
+# Historical Australia-only gap fill. Resumes when both chunk JSON and CSV exist.
+# Override ARGS, for example: ARGS='--end 2025-12-31 --chunk-days 30'.
+backfill-open-meteo:
+	$(COMPOSE) run --rm --no-deps --build --entrypoint python ingestion scripts/backfill_open_meteo.py $(ARGS)
+
 merge-raw:
 	$(COMPOSE) run --rm --no-deps --entrypoint python ingestion -m weather_mlops.data.merge_raw
 
@@ -127,7 +143,7 @@ register-dataset:
 	$(COMPOSE) run --rm --no-deps --build --entrypoint python api scripts/register_dataset_version.py $(ARGS)
 
 airflow-up:
-	cd airflow && docker compose --env-file .env --env-file ../.env up -d
+	$(LOCAL_ENV) uv run python scripts/with_vault_env.py --monitoring sh -c 'cd airflow && docker compose --env-file .env --env-file ../.env up -d'
 
 airflow-down:
 	cd airflow && docker compose --env-file .env --env-file ../.env down

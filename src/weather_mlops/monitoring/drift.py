@@ -283,6 +283,9 @@ def run_drift_job(
         metrics = delayed_performance(serving_rows)
         if metrics is not None:
             performance = performance_decision(metrics)
+            performance["labeled_predictions"] = sum(
+                row.get("observed_label") in {"Yes", "No"} for row in serving_rows
+            )
             store_drift_report(
                 {
                     "scope": "performance",
@@ -294,7 +297,12 @@ def run_drift_job(
                 client=catalog_client,
             )
 
-    return {"feature_drift": summary, "performance": performance}
+    result = {"feature_drift": summary, "performance": performance}
+    if settings.pushgateway_url:
+        from weather_mlops.monitoring.metrics import push_monitoring_metrics
+
+        push_monitoring_metrics(result, gateway_url=settings.pushgateway_url)
+    return result
 
 
 def parse_args() -> argparse.Namespace:

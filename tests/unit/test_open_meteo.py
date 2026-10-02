@@ -1,11 +1,19 @@
+from datetime import date
+
 import pandas as pd
+import pytest
 import requests
 
 from weather_mlops.data.open_meteo import (
     OpenMeteoError,
     WeatherLocation,
     _get_json,
+    chunk_date_range,
+    ensure_australian_locations,
+    fetch_open_meteo_range_payload,
+    fetch_open_meteo_range_payloads,
     normalize_open_meteo_payloads,
+    normalize_open_meteo_range_payloads,
     read_locations,
 )
 from weather_mlops.data.weatheraus_schema import WEATHERAUS_COLUMNS
@@ -115,6 +123,34 @@ def test_get_json_reports_open_meteo_errors(monkeypatch) -> None:
         raise AssertionError("Expected invalid Open-Meteo request to fail.")
 
 
+def test_get_json_retries_rate_limits_using_retry_after(monkeypatch) -> None:
+    class RateLimitedResponse:
+        ok = False
+        status_code = 429
+        headers = {"Retry-After": "2"}
+        text = '{"reason":"Minutely API request limit exceeded"}'
+
+        def json(self) -> dict[str, str]:
+            return {"reason": "Minutely API request limit exceeded"}
+
+    class SuccessResponse:
+        ok = True
+        status_code = 200
+
+        def json(self) -> dict[str, str]:
+            return {"ok": "yes"}
+
+    responses = iter((RateLimitedResponse(), SuccessResponse()))
+    waits: list[float] = []
+    monkeypatch.setattr(
+        "weather_mlops.data.open_meteo.requests.get", lambda *args, **kwargs: next(responses)
+    )
+    monkeypatch.setattr("weather_mlops.data.open_meteo.time.sleep", waits.append)
+
+    assert _get_json("https://archive-api.open-meteo.com/v1/archive", {}, 30) == {"ok": "yes"}
+    assert waits == [2.0]
+
+
 def test_get_json_wraps_network_errors(monkeypatch) -> None:
     def fake_get(*args, **kwargs):
         raise requests.ConnectionError("network blocked")
@@ -146,3 +182,93 @@ def test_normalize_open_meteo_payloads_leaves_missing_values_when_hours_absent()
 
     assert pd.isna(result.loc[0, "Temp9am"])
     assert pd.isna(result.loc[0, "RainTomorrow"])
+
+
+def test_chunk_date_range_covers_each_day_once() -> None:
+    assert chunk_date_range(date(2017, 6, 27), date(2017, 7, 5), chunk_days=4) == [
+        (date(2017, 6, 27), date(2017, 6, 30)),
+        (date(2017, 7, 1), date(2017, 7, 4)),
+        (date(2017, 7, 5), date(2017, 7, 5)),
+    ]
+
+
+def test_australian_backfill_rejects_non_australian_locations() -> None:
+    with pytest.raises(ValueError, match="Australia"):
+        ensure_australian_locations(
+            [
+                WeatherLocation("Sydney", -33.8, 151.2, "Australia/Sydney"),
+                WeatherLocation("Singapore", 1.3, 103.8, "Asia/Singapore"),
+            ]
+        )
+
+
+def test_australian_backfill_allows_norfolk_island() -> None:
+    ensure_australian_locations(
+        [WeatherLocation("NorfolkIsland", -29.0408, 167.9547, "Pacific/Norfolk")]
+    )
+
+
+def test_range_fetch_includes_one_future_day_for_the_final_label(monkeypatch) -> None:
+    captured = {}
+
+    def fake_get_json(_url, params, _timeout):
+        captured.update(params)
+        return {"daily": {"time": []}, "hourly": {"time": []}}
+
+    monkeypatch.setattr("weather_mlops.data.open_meteo._get_json", fake_get_json)
+
+    payload = fetch_open_meteo_range_payload(
+        WeatherLocation("Sydney", -33.8, 151.2, "Australia/Sydney"),
+        date(2017, 6, 27),
+        date(2017, 9, 24),
+    )
+
+    assert payload["start_date"] == "2017-06-27"
+    assert payload["end_date"] == "2017-09-24"
+    assert captured["start_date"] == "2017-06-27"
+    assert captured["end_date"] == "2017-09-25"
+
+
+def test_range_batch_fetches_locations_in_one_archive_request(monkeypatch) -> None:
+    captured = {}
+
+    def fake_get_json(_url, params, _timeout):
+        captured.update(params)
+        return [{"daily": {}}, {"daily": {}}]
+
+    monkeypatch.setattr("weather_mlops.data.open_meteo._get_json", fake_get_json)
+
+    payloads = fetch_open_meteo_range_payloads(
+        [
+            WeatherLocation("Sydney", -33.8, 151.2, "Australia/Sydney"),
+            WeatherLocation("Perth", -31.9, 115.9, "Australia/Perth"),
+        ],
+        date(2017, 6, 27),
+        date(2017, 9, 24),
+    )
+
+    assert captured["latitude"] == "-33.8,-31.9"
+    assert captured["longitude"] == "151.2,115.9"
+    assert captured["timezone"] == "Australia/Sydney,Australia/Perth"
+    assert [payload["location"]["location"] for payload in payloads] == ["Sydney", "Perth"]
+
+
+def test_normalize_range_payloads_emits_each_observation_day_but_not_label_day() -> None:
+    payload = {
+        "provider": "open-meteo",
+        "location": {"location": "Sydney", "timezone": "Australia/Sydney"},
+        "start_date": "2026-09-01",
+        "end_date": "2026-09-02",
+        "response": {
+            "daily": {
+                "time": ["2026-09-01", "2026-09-02", "2026-09-03"],
+                "rain_sum": [0.0, 3.0, 0.0],
+            },
+            "hourly": {"time": []},
+        },
+    }
+
+    result = normalize_open_meteo_range_payloads([payload])
+
+    assert result["Date"].tolist() == ["2026-09-01", "2026-09-02"]
+    assert result["RainTomorrow"].tolist() == ["Yes", "No"]

@@ -31,7 +31,7 @@ scheduled retraining. Code in Git, data in Supabase Storage, lineage in Postgres
 git clone https://github.com/DataScientest-Studio/jul26_bmlops_int_weather.git
 cd jul26_bmlops_int_weather
 uv sync
-cp .env.example .env          # fill SUPABASE_URL + SUPABASE_KEY only
+cp .env.example .env          # fill the required Supabase bootstrap values
 make dvc-config
 make dvc-pull
 make test                     # ruff + pytest, including live Nginx
@@ -55,16 +55,36 @@ Full Makefile target table lives in the [wiki Setup page](https://github.com/Dat
 
 ## Local `.env`
 
-Only two values go in `.env`:
+Required in `.env`:
 
 ```text
 SUPABASE_URL=https://<project-ref>.supabase.co
 SUPABASE_KEY=<supabase-service-role-or-sb_secret-key>
 ```
 
-Everything else (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `API_AUTH_USER`,
-`API_AUTH_PASSWORD`) is in Supabase Vault and is hydrated at compose-up or
-API startup. **Do not put Vault values in `.env`** and do not commit `.env`.
+For `make monitoring` and `make airflow-up`, store these operational
+credentials in Supabase Vault:
+
+```text
+AIRFLOW_API_USER=<airflow-admin-name>
+AIRFLOW_API_PASSWORD=<airflow-admin-password>
+GF_SECURITY_ADMIN_USER=<grafana-admin-name>
+GF_SECURITY_ADMIN_PASSWORD=<grafana-admin-password>
+```
+
+Grafana uses `AIRFLOW_API_*` to authenticate the alert webhook that starts
+`weather_retrain`; Airflow creates its admin account using the same pair.
+`make monitoring` and `make airflow-up` hydrate them from Vault immediately
+before Compose starts. A local `.env` value remains a development override.
+`PUSHGATEWAY_URL` is deliberately not configurable here: the Airflow task uses
+the internal Compose address `http://pushgateway:9091`.
+
+Supabase Vault contains the existing application secrets only:
+`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `API_AUTH_USER`,
+`API_AUTH_PASSWORD`, `SUPABASE_DB_URL`, `AIRFLOW_API_USER`,
+`AIRFLOW_API_PASSWORD`, `GF_SECURITY_ADMIN_USER`, and
+`GF_SECURITY_ADMIN_PASSWORD`. **Do not put Vault values in `.env`** and do not
+commit `.env`.
 
 Rotate a Vault secret, then `make api` to restart the API container. Vault
 hydration is a startup snapshot, not live reload.

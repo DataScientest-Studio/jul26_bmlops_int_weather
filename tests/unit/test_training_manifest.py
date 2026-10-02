@@ -14,8 +14,7 @@ def test_load_verified_training_inputs_rejects_stale_csv(tmp_path) -> None:
     manifest = build_processed_manifest(
         tmp_path,
         parent_sha256="rawsha",
-        train_fraction=0.7,
-        validation_fraction=0.15,
+        split={},
     )
     write_processed_manifest(manifest, tmp_path / "manifest.json")
     (tmp_path / "X_train.csv").write_text("tampered\n", encoding="utf-8")
@@ -38,8 +37,7 @@ def test_load_verified_training_inputs_returns_stored_identity(tmp_path) -> None
     manifest = build_processed_manifest(
         tmp_path,
         parent_sha256="rawsha",
-        train_fraction=0.7,
-        validation_fraction=0.15,
+        split={},
     )
     write_processed_manifest(manifest, tmp_path / "manifest.json")
 

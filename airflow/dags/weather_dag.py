@@ -40,6 +40,56 @@ with DAG(
         auto_remove=True,
         mount_tmp_dir=False,
     )
+    reconcile_outcomes = DockerOperator(
+        task_id="reconcile_outcomes",
+        image="weather-api:latest",
+        mounts=[
+            Mount(source=path + "/data", target="/app/data", type="bind", read_only=True),
+        ],
+        docker_url="tcp://docker-socket-proxy:2375",
+        network_mode="jul26_bmlops_int_weather_weather_network",
+        auto_remove=True,
+        command="python3 -m weather_mlops.data.outcomes",
+        environment={
+            "SUPABASE_URL": os.environ.get("SUPABASE_URL"),
+            "SUPABASE_KEY": os.environ.get("SUPABASE_KEY"),
+        },
+        mount_tmp_dir=False,
+    )
+    evidently_monitor = DockerOperator(
+        task_id="evidently_monitor",
+        image="weather-api:latest",
+        mounts=[
+            Mount(source=path + "/data", target="/app/data", type="bind", read_only=True),
+            Mount(source=path + "/models", target="/app/models", type="bind"),
+            Mount(source=path + "/reports", target="/app/reports", type="bind"),
+        ],
+        docker_url="tcp://docker-socket-proxy:2375",
+        network_mode="jul26_bmlops_int_weather_weather_network",
+        auto_remove=True,
+        command="python3 -m weather_mlops.monitoring.drift",
+        environment={
+            "MLFLOW_TRACKING_URI": "http://mlflow:8080",
+            "PUSHGATEWAY_URL": "http://pushgateway:9091",
+            "SUPABASE_URL": os.environ.get("SUPABASE_URL"),
+            "SUPABASE_KEY": os.environ.get("SUPABASE_KEY"),
+        },
+        mount_tmp_dir=False,
+    )
+    ingestion >> preprocessing >> reconcile_outcomes >> evidently_monitor
+
+with DAG(
+    dag_id="weather_retrain",
+    tags=["docker", "weather_retraining"],
+    default_args={
+        "owner": "airflow",
+        "start_date": datetime(2026, 9, 1, tzinfo=local_tz),
+        "retries": 3,
+        "retry_delay": timedelta(minutes=1),
+    },
+    schedule_interval=None,
+    catchup=False,
+) as retrain_dag:
     training = DockerOperator(
         task_id="train",
         image="weather-api:latest",
@@ -94,4 +144,4 @@ with DAG(
         environment={"MLFLOW_TRACKING_URI": "http://mlflow:8080"},
         mount_tmp_dir=False,
     )
-    ingestion >> preprocessing >> training >> evaluation >> compare
+    training >> evaluation >> compare

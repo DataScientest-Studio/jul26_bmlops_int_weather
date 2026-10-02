@@ -82,7 +82,8 @@ def test_training_logs_joblib_lineage_and_git_tags() -> None:
     assert 'key="dataset_sha256"' in source
     assert 'key="git_commit"' in source
     assert "clear_mlflow_run_metadata()" in source
-    assert "catalog_registered_model(" in source
+    assert "sync_release_to_catalog(" in source
+    assert '"lineage/release.json"' in source
     assert "skops_trusted_types" in source
     assert "xgboost.core.Booster" in source
     assert "xgboost.sklearn.XGBClassifier" in source

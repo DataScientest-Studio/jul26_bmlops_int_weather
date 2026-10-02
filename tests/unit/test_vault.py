@@ -4,6 +4,7 @@ import pytest
 
 from weather_mlops.config.settings import settings
 from weather_mlops.security.vault import (
+    MONITORING_SETTINGS,
     VAULT_SETTINGS,
     VaultError,
     derive_s3_endpoint,
@@ -18,6 +19,16 @@ def test_resolve_secret_prefers_environment(monkeypatch) -> None:
     value = resolve_secret("OPEN_METEO_TOKEN", fetcher=lambda _name: "from-vault")
 
     assert value == "from-env"
+
+
+def test_monitoring_credentials_are_allowed_vault_secrets() -> None:
+    assert dict(MONITORING_SETTINGS) == {
+        "AIRFLOW_API_USER": "airflow_api_user",
+        "AIRFLOW_API_PASSWORD": "airflow_api_password",
+        "GF_SECURITY_ADMIN_USER": "gf_security_admin_user",
+        "GF_SECURITY_ADMIN_PASSWORD": "gf_security_admin_password",
+    }
+    assert set(MONITORING_SETTINGS) <= set(VAULT_SETTINGS)
 
 
 def test_resolve_secret_uses_fetcher_when_env_missing(monkeypatch) -> None:
@@ -86,6 +97,20 @@ def test_hydrate_runtime_secrets_can_load_database_url(monkeypatch) -> None:
     hydrate_runtime_secrets(fetcher=lambda name: f"vault-{name}", names=("SUPABASE_DB_URL",))
 
     assert settings.supabase_db_url == "vault-SUPABASE_DB_URL"
+
+
+def test_hydrate_runtime_secrets_can_load_monitoring_credentials(monkeypatch) -> None:
+    for env_name, attr in MONITORING_SETTINGS:
+        monkeypatch.setattr(settings, attr, None)
+        monkeypatch.delenv(env_name, raising=False)
+
+    names = tuple(name for name, _attr in MONITORING_SETTINGS)
+    hydrate_runtime_secrets(fetcher=lambda name: f"vault-{name}", names=names, required=names)
+
+    assert settings.airflow_api_user == "vault-AIRFLOW_API_USER"
+    assert settings.airflow_api_password == "vault-AIRFLOW_API_PASSWORD"
+    assert settings.gf_security_admin_user == "vault-GF_SECURITY_ADMIN_USER"
+    assert settings.gf_security_admin_password == "vault-GF_SECURITY_ADMIN_PASSWORD"
 
 
 def test_hydrate_runtime_secrets_can_limit_names(monkeypatch) -> None:

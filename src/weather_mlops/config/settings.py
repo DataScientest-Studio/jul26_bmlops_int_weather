@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     validation_metrics_path: Path = PROJECT_ROOT / "reports" / "metrics" / "validation.json"
     evaluation_metrics_path: Path = PROJECT_ROOT / "reports" / "metrics" / "evaluation.json"
     evidently_reports_dir: Path = PROJECT_ROOT / "reports" / "evidently"
+    pushgateway_url: str | None = None
 
     # Supabase. Local .env only needs SUPABASE_URL + SUPABASE_KEY.
     # S3 keys and API basic auth come from Vault when they are not already set.
@@ -64,10 +65,18 @@ class Settings(BaseSettings):
     api_auth_user: str | None = None
     api_auth_password: str | None = None
 
+    # Local monitoring credentials. They may be overridden from Vault before
+    # Grafana or Airflow Compose is started.
+    airflow_api_user: str | None = None
+    airflow_api_password: str | None = None
+    gf_security_admin_user: str | None = None
+    gf_security_admin_password: str | None = None
+
     # Model
     random_state: int = 42
-    train_fraction: float = 0.7
-    validation_fraction: float = 0.15
+    training_window_days: int | None = 1825
+    validation_window_days: int = 90
+    test_window_days: int = 90
 
     # MLflow. Unset = skip tracking. Compose sets http://mlflow:8080 on the API.
     mlflow_tracking_uri: str | None = None
