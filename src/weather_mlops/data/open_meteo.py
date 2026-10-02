@@ -183,9 +183,7 @@ def fetch_open_meteo_range_payloads(
         timeout_seconds,
     )
     responses = response if isinstance(response, list) else [response]
-    if len(responses) != len(locations) or not all(
-        isinstance(item, dict) for item in responses
-    ):
+    if len(responses) != len(locations) or not all(isinstance(item, dict) for item in responses):
         raise OpenMeteoError(
             "Open-Meteo returned an unexpected number or shape of location responses."
         )
