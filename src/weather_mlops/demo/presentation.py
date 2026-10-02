@@ -148,7 +148,7 @@ SECTIONS = [
                 "figure": ["0.87 to 0.70", "ROC-AUC, Australia test set vs Singapore"],
                 "lanes": [],
                 "points": [
-                    "Singapore: rain tomorrow on 82.6% of days, Australia 22.9%.",
+                    "Rain tomorrow, all years: Singapore 82.6%, Australia 21.9%.",
                     "Evidently flags drift on all 5 monitored columns.",
                     "Retraining on Singapore 2014-2021 helps, but only a little.",
                 ],
@@ -167,6 +167,8 @@ SECTIONS = [
                     "To test drift we needed a rainy place with the same columns. "
                     "Singapore from Open-Meteo, 2014 to 2024, 4,007 days, same "
                     "23-column schema as WeatherAUS.",
+                    "Rain tomorrow on 82.6% of Singapore days, 21.9% in the whole "
+                    "Australian file. The 22.9% on the previous slide is the test set only.",
                     "Evidently compares it with X_train: Location, MinTemp, Humidity3pm, "
                     "Pressure3pm and RainToday all drift.",
                     "The model ranks Singapore days much worse: ROC-AUC 0.87 on the "
