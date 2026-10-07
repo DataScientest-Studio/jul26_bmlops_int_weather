@@ -2,7 +2,7 @@
 
 REPO_URL = "https://github.com/DataScientest-Studio/jul26_bmlops_int_weather"
 # links point to this commit, so the jury sees the code we present
-COMMIT = "79baa2d5f02813ee8aef8b615adf1593a79cda26"
+COMMIT = "32ea7eab3118fa25a312f03c347e1293fe15f58f"
 
 STAGES = [
     {"id": "data", "label": "Data", "built": True},
@@ -80,7 +80,7 @@ CUTOFFS = [
 SECTIONS = [
     {
         "presenter": "Gabriel",
-        "title": "Problem, drift, architecture and gateway",
+        "title": "Problem, architecture, drift and gateway",
         "minutes": 5,
         "slides": [
             {
@@ -92,69 +92,209 @@ SECTIONS = [
                 "lanes": [],
                 "points": [],
                 "links": [],
+                # elements lit on the slide while each note is read
+                "focus": [
+                    ["team"],
+                    ["title"],
+                    ["lede"],
+                    ["team"],
+                ],
                 "notes": [
-                    "About 20 seconds.",
-                    "We are Gabriel, Jonathan, Thomas and Ziad.",
-                    "Our question: will it rain tomorrow at a given Australian weather "
-                    "station? The model is the small part. The talk is about the machinery "
-                    "around it: data, versioning, tracking, serving, security, "
-                    "orchestration and CI/CD.",
-                    "I cover the problem, drift, the architecture and the gateway. Then Jonathan "
-                    "on data and model, Thomas on serving and operations, and Ziad with the "
-                    "live demo.",
+                    "[TEAM NAMES] Good morning. We are Gabriel, Jonathan, Thomas and Ziad.",
+                    "[TITLE] Our task is a binary classification: will it rain tomorrow at a "
+                    "given Australian weather station?",
+                    "[SUBTITLE] The model is the small part. Today we show the system around it.",
+                    "[TEAM NAMES] I start with the architecture, the problem, drift and our "
+                    "gateway. Then Jonathan presents data and model, Thomas serving and "
+                    "operations, and Ziad the live demo.",
+                ],
+            },
+            {
+                "id": "architecture",
+                "title": "Overall software architecture",
+                "layout": "system",
+                "stages": [],
+                "figure": None,
+                "lanes": [
+                    {
+                        "name": "Closed loop: from prediction to new champion",
+                        "steps": [
+                            "Prediction logged",
+                            "Real outcome arrives",
+                            "Drift and recall check",
+                            "Grafana alert",
+                            "Airflow retrains",
+                            "Gate moves @champion",
+                        ],
+                    },
+                ],
+                "zones": [
+                    {
+                        "name": "Data sources",
+                        "tools": ["Kaggle", "Open-Meteo"],
+                        "points": [
+                            "WeatherAUS seed, 2007 to 2017",
+                            "Open-Meteo archive API for new days",
+                            "Same schema, 49 stations",
+                        ],
+                    },
+                    {
+                        "name": "Orchestration",
+                        "tools": ["Airflow"],
+                        "points": [
+                            "Daily DAG: ingest, preprocess, Evidently",
+                            "Retrain DAG: train, evaluate, compare",
+                            "Each task runs in its own container",
+                        ],
+                    },
+                    {
+                        "name": "Storage and lineage",
+                        "tools": ["Supabase", "DVC", "Vault"],
+                        "points": [
+                            "Postgres: data, catalog, predictions",
+                            "S3: dataset snapshots, model artifacts",
+                            "Supabase Vault: app secrets",
+                        ],
+                    },
+                    {
+                        "name": "Training and registry",
+                        "tools": ["MLflow", "XGBoost"],
+                        "points": [
+                            "Every run tracked with data hash and commit",
+                            "New model gets @candidate",
+                            "Only the gate moves @champion",
+                        ],
+                    },
+                    {
+                        "name": "Serving",
+                        "tools": ["Nginx", "FastAPI", "Streamlit"],
+                        "points": [
+                            "Nginx: TLS, rate limits",
+                            "FastAPI: login, serves @champion",
+                            "New champion live without restart",
+                        ],
+                    },
+                    {
+                        "name": "Monitoring",
+                        "tools": ["Prometheus", "Grafana", "Evidently"],
+                        "points": [
+                            "API metrics every 15 s",
+                            "Daily job: drift and real recall",
+                            "Grafana: 2 dashboards, 7 alerts",
+                        ],
+                    },
+                ],
+                "caption": "Docker Compose: 11 services, 7 built from our own Dockerfiles. "
+                "Airflow 2.8.1 runs as a separate stack.",
+                "points": [],
+                "links": [
+                    ["Compose file", "docker-compose.yml"],
+                    ["Airflow DAGs", "airflow/dags/weather_dag.py"],
+                    ["Alerts", "docker/grafana/provisioning/alerting/alerts.yml"],
+                ],
+                # elements lit on the slide while each note is read
+                "focus": [
+                    [],
+                    ["zone-0"],
+                    ["zone-1"],
+                    ["zone-2"],
+                    ["zone-3"],
+                    ["zone-4"],
+                    ["zone-5"],
+                    ["lane-0"],
+                    [],
+                ],
+                "notes": [
+                    "[WHOLE SLIDE] This is our overall software architecture. Everything runs "
+                    "in Docker Compose, and Airflow runs as a separate stack.",
+                    "[DATA SOURCES] We use the WeatherAUS dataset from Kaggle as our labelled "
+                    "history, and we extend it with the Open-Meteo archive API in the same "
+                    "schema.",
+                    "[ORCHESTRATION] Airflow runs two DAGs. Every evening, weather_pipeline "
+                    "fetches new weather, cleans it, fills in the real outcome of past "
+                    "predictions, then runs our monitoring job. weather_retrain trains, "
+                    "evaluates, and compares with the champion.",
+                    "[STORAGE AND LINEAGE] We keep our data in Supabase Postgres, dataset "
+                    "snapshots in DVC, and secrets in Supabase Vault.",
+                    "[TRAINING AND REGISTRY] We track every training run in MLflow, with its "
+                    "dataset hash and git commit. A new model gets the candidate alias; only "
+                    "our promotion gate moves the champion alias.",
+                    "[SERVING] Nginx is the single entry point. FastAPI always serves the "
+                    "current champion, so a promotion goes live without a restart.",
+                    "[MONITORING] Prometheus and Grafana watch the API, and Evidently checks "
+                    "feature drift.",
+                    "[CLOSED LOOP STRIP] The bottom line is our closed loop. A few days after "
+                    "each prediction, we learn the real outcome and compute the real recall. "
+                    "If it falls below zero point seven five, Grafana triggers "
+                    "weather_retrain. We retrain on real recall, not on drift alone, because "
+                    "drift does not prove the model got worse.",
+                    "[NEXT SLIDE] So, why is this problem harder than it looks?",
                 ],
             },
             {
                 "id": "problem",
-                "title": "Why we do not grade on accuracy",
+                "title": "Class imbalance: why accuracy is the wrong metric",
                 "layout": "hero",
                 "stages": [],
-                "figure": ["77.1%", "test accuracy of a model that always answers no"],
+                "figure": ["77.1%", "test accuracy of the majority-class baseline (always no)"],
                 "lanes": [],
                 "points": [
-                    "Target: rain tomorrow, one model for 49 stations.",
-                    "Promotion metric: ROC-AUC.",
-                    "Guardrail: recall of at least 0.75.",
+                    "Target: RainTomorrow, binary. One XGBoost model for 49 stations.",
+                    "Promotion metric: validation ROC-AUC.",
+                    "Guardrail: validation recall of at least 0.75.",
                 ],
                 "facts": [
                     ["Test rows", "24,808"],
-                    ["Rainy days", "5,689 (22.9%)"],
-                    ["Caught by always no", "0"],
-                    ["Caught by our model", "4,334 (76.2%)"],
+                    ["Positive class (rain)", "5,689 (22.9%)"],
+                    ["Baseline recall", "0.000"],
+                    ["Candidate run: recall / precision", "0.762 / 0.543"],
+                    ["Candidate run: ROC-AUC", "0.866"],
                 ],
                 "links": [
                     ["Evaluation", "src/weather_mlops/models/evaluation.py"],
                     ["Settings", "src/weather_mlops/config/settings.py"],
                 ],
+                # elements lit on the slide while each note is read
+                "focus": [
+                    ["point-0"],
+                    ["hero", "fact-1", "fact-2"],
+                    ["point-1", "fact-4"],
+                    ["point-2"],
+                ],
                 "notes": [
-                    "About 1 minute.",
-                    "Input: the station name plus 20 measurements from one day: "
-                    "temperature, rainfall, humidity, pressure, wind, cloud, sunshine. "
-                    "Output: rain tomorrow, yes or no, with a probability.",
-                    "Only 22.9% of test days are rainy, so answering no every time already "
-                    "scores 77.1%.",
-                    "Our model scores 79.8% accuracy. The gap looks tiny, which is why "
-                    "accuracy is the wrong metric here.",
-                    "ROC-AUC scores the ranking over all thresholds; always answering no "
-                    "gets only 0.5.",
-                    "Recall guardrail: a missed rainy day costs more than a false alarm.",
+                    "[TARGET (bullet 1)] The input is one row of the CSV: one day at one "
+                    "station, with twenty weather columns, like minimum temperature, "
+                    "humidity at three p.m., pressure, wind, and whether it rained today. "
+                    "The output is the probability of rain tomorrow.",
+                    "[77.1% + TABLE: Positive class, Baseline recall] Only twenty-three "
+                    "percent of test days are rainy. So the baseline that always says no "
+                    "reaches seventy-seven percent accuracy, with a recall of zero. Our "
+                    "candidate run reaches about eighty percent. Accuracy cannot tell a "
+                    "useful model from a useless one.",
+                    "[PROMOTION METRIC (bullet 2) + TABLE: Candidate ROC-AUC] So we promote "
+                    "on validation ROC-AUC, which measures ranking and does not depend on a "
+                    "threshold. The constant baseline scores zero point five; this run scores "
+                    "zero point eight seven on the test set.",
+                    "[GUARDRAIL (bullet 3)] And we add a guardrail: validation recall of at "
+                    "least zero point seven five, because a missed rainy day costs more than "
+                    "a false alarm.",
                 ],
             },
             {
                 "id": "drift",
-                "title": "Same model, rainy city",
+                "title": "Distribution shift: Australia to Singapore",
                 "layout": "hero",
                 "stages": [],
-                "figure": ["0.87 to 0.70", "ROC-AUC, Australia test set vs Singapore"],
+                "figure": ["0.87 to 0.70", "ROC-AUC, Australian test set vs all Singapore days"],
                 "lanes": [],
                 "points": [
-                    "Rain tomorrow, all years: Singapore 82.6%, Australia 21.9%.",
-                    "Evidently flags drift on all 5 monitored columns.",
-                    "Retraining on Singapore 2014-2021 helps, but only a little.",
+                    "Label shift: rain tomorrow on 82.6% of Singapore days, 21.9% in Australia.",
+                    "Covariate shift: Evidently (PSI) flags all 5 monitored features.",
+                    "Retraining recovers only part of the loss.",
                 ],
                 "facts": [
                     ["AU model, Singapore 2022-24", "0.641"],
-                    ["Retrained on Singapore only", "0.703"],
+                    ["Retrained on Singapore 2014-21", "0.703"],
                     ["Retrained on AU + Singapore", "0.708"],
                     ["AU + Singapore, AU test set", "0.867"],
                 ],
@@ -162,125 +302,85 @@ SECTIONS = [
                     ["Merge Singapore", "scripts/merge_singapore.py"],
                     ["Score and retrain", "scripts/score_drift.py"],
                 ],
-                "notes": [
-                    "About 1 minute.",
-                    "To test drift we needed a rainy place with the same columns. "
-                    "Singapore from Open-Meteo, 2014 to 2024, 4,007 days, same "
-                    "23-column schema as WeatherAUS.",
-                    "Rain tomorrow on 82.6% of Singapore days, 21.9% in the whole "
-                    "Australian file. The 22.9% on the previous slide is the test set only.",
-                    "Evidently compares it with X_train: Location, MinTemp, Humidity3pm, "
-                    "Pressure3pm and RainToday all drift.",
-                    "The model ranks Singapore days much worse: ROC-AUC 0.87 on the "
-                    "Australian test set, 0.70 on Singapore.",
-                    "Retraining: we train on Singapore 2014 to 2021 and test on 2022 "
-                    "to 2024. The Australian model gets 0.641 there, retrained on "
-                    "Singapore 0.703, on Australia plus Singapore 0.708.",
-                    "Adding Singapore does not hurt Australia: 0.867 on the Australian "
-                    "test set, same as before.",
-                    "Why only a little better: it rains almost every day, so the "
-                    "measurements we have do not separate rainy and dry days well.",
-                    "The retrained models are not saved or promoted. This is an "
-                    "experiment to show drift, the champion stays the Australian model.",
-                ],
-            },
-            {
-                "id": "architecture",
-                "title": "Two pipelines, one registry",
-                "layout": "architecture",
-                "stages": [],
-                "figure": None,
-                "lanes": [
-                    {
-                        "name": "Training, scheduled daily",
-                        "steps": ["Airflow", "Ingest", "Preprocess", "Train"],
-                    },
-                    {"name": "Prediction, on request", "steps": ["Client", "Nginx", "FastAPI"]},
-                ],
-                "points": [],
-                "links": [
-                    ["Compose file", "docker-compose.yml"],
-                    ["Airflow DAG", "airflow/dags/weather_dag.py"],
+                # elements lit on the slide while each note is read
+                "focus": [
+                    ["title"],
+                    ["point-0", "point-1"],
+                    ["hero"],
+                    ["fact-0", "fact-1", "fact-2", "fact-3"],
+                    ["point-2"],
                 ],
                 "notes": [
-                    "About 1 minute.",
-                    "Training writes a candidate to the MLflow registry. Prediction loads "
-                    "the version holding the champion alias, or the local model file when "
-                    "there is none.",
-                    "Seven Dockerfiles, one per service: ingestion, preprocess, API, Nginx, "
-                    "MLflow, the Streamlit demo and the test runner.",
-                    "Ingestion and preprocess are jobs that exit; the API stays up. Compose "
-                    "starts preprocess only after ingestion exits with code 0.",
-                    "The API mounts the data read-only. It writes only models and reports, "
-                    "because POST /train saves the new model there.",
-                    "Team decision on 10 Sep: no container trains on startup. Training is a "
-                    "POST /train call, so a restart never retrains silently.",
-                    "Also decided on 10 Sep: one requirements file per image, to keep images lean.",
-                    "Postgres on Supabase holds observations and the dataset catalog; the "
-                    "DVC remote holds dataset snapshots.",
+                    "[TITLE] To test drift on real data, we took a much rainier place with "
+                    "the same schema: Singapore, eleven years from Open-Meteo.",
+                    "[LABEL SHIFT + COVARIATE SHIFT (bullets 1-2)] Two shifts at once. It "
+                    "rains the next day on eighty-three percent of Singapore days, against "
+                    "twenty-two percent in Australia. And Evidently flags all five monitored "
+                    "features.",
+                    "[0.87 TO 0.70] The ROC-AUC falls from zero point eight seven to zero "
+                    "point seven.",
+                    "[TABLE: 0.641, 0.703, 0.708, 0.867] On a temporal split, retraining with "
+                    "Singapore lifts its score from zero point six four to zero point seven, "
+                    "and Australia stays at zero point eight seven.",
+                    "[RETRAINING RECOVERS (bullet 3)] So retraining recovers only part of the "
+                    "loss. This was an offline experiment; the served model stays Australian.",
                 ],
             },
             {
                 "id": "gateway",
-                "title": "One door in: the Nginx gateway",
+                "title": "Single ingress: the Nginx gateway",
                 "layout": "flow",
                 "stages": ["security"],
                 "figure": None,
                 "lanes": [
                     {
-                        "name": "Every request from outside",
-                        "steps": ["HTTPS on 443", "Rate limit per IP", "Basic auth", "FastAPI"],
+                        "name": "Every external request",
+                        "steps": [
+                            "TLS 1.2/1.3 on 443",
+                            "limit_req per IP",
+                            "Basic auth (FastAPI)",
+                            "FastAPI",
+                        ],
                     },
                 ],
                 "points": [
-                    "Only Nginx listens publicly. The API port is not published.",
-                    "10 requests/s per IP, 1/s on training. Above that: 429.",
-                    "TLS 1.2 or 1.3 only. Plain HTTP is redirected.",
+                    "Only Nginx is public. All other tools bind to localhost.",
+                    "Excess requests get 429 before they reach Python.",
+                    "6 live tests in CI: redirect, TLS, HSTS, health, 401, 429.",
                 ],
                 "facts": [
-                    ["Public ports", "80, 443"],
-                    ["API limit", "10 req/s per IP, burst 20"],
-                    ["/train limit", "1 req/s per IP, burst 3"],
-                    ["Max request body", "2 MB"],
+                    ["Public ports", "80 (301), 443"],
+                    ["API limit", "10 r/s per IP, burst 20"],
+                    ["/train limit", "1 r/s per IP, burst 3"],
+                    ["Body cap, timeouts", "2 MB, 15 s"],
+                    ["/metrics from outside", "404"],
                 ],
                 "links": [
                     ["Nginx config", "docker/nginx/nginx.conf"],
                     ["Auth", "src/weather_mlops/api/main.py"],
                     ["Live tests", "tests/integration/test_nginx_live.py"],
                 ],
+                # elements lit on the slide while each note is read
+                "focus": [
+                    ["point-0", "fact-0"],
+                    ["lane-0", "fact-1", "fact-2"],
+                    ["point-2"],
+                    [],
+                ],
                 "notes": [
-                    "About 1.5 minutes. Then hand over to Jonathan.",
-                    "Why a gateway: the API container has no published port. Nginx is the "
-                    "only service on ports 80 and 443. MLflow and Streamlit bind to "
-                    "127.0.0.1 only, so they are not reachable from the network.",
-                    "Encryption: port 80 answers with a 301 redirect to HTTPS. Only TLS 1.2 "
-                    "and 1.3 are accepted. HSTS tells browsers to stay on HTTPS for a year.",
-                    "Flooding and brute force: Nginx limits each client IP to 10 requests "
-                    "per second with a burst of 20, and /train to 1 per second with a burst "
-                    "of 3, because training is expensive. Excess requests get 429 before "
-                    "they reach Python.",
-                    "Slow or oversized requests: bodies above 2 MB are refused, and Nginx "
-                    "drops a client that goes silent for 15 seconds while sending headers "
-                    "or body. That limits attacks that hold connections open.",
-                    "Authentication: predict, live predict and train need HTTP Basic auth. "
-                    "The API compares credentials in constant time, so response time does "
-                    "not leak how much of a guess was right. Credentials come from Supabase "
-                    "Vault at startup, never from the repo.",
-                    "Less exposure: server_tokens off hides the Nginx version. Headers "
-                    "block framing, MIME sniffing and referrer leaks.",
-                    "Proof: live tests in CI check the redirect, TLS version, HSTS, 401 "
-                    "without credentials, and a burst that must return 429.",
-                    "Limitations. The certificate is self-signed for localhost, so our own "
-                    "clients skip verification for local hosts only; production needs a CA "
-                    "certificate.",
-                    "Limits are per IP: they do not stop an attack from many IPs, and "
-                    "behind another proxy all clients would share one IP, since no real-IP "
-                    "setting is configured.",
-                    "One shared Basic auth user, with no lockout: at 10 requests per second "
-                    "one IP can still try 864,000 passwords a day. Rotating a Vault secret "
-                    "needs an API restart.",
-                    "/health has no login and no rate limit, and /docs and /openapi.json "
-                    "are public, rate-limited, and show the API schema.",
+                    "[ONLY NGINX IS PUBLIC (bullet 1) + TABLE: Public ports] Our system has a "
+                    "single entry point: Nginx, on ports 80 and 443. All other tools bind to "
+                    "localhost.",
+                    "[LANE: Every external request + TABLE: limits] Every request passes three "
+                    "layers. First, TLS: only versions 1.2 and 1.3, and plain HTTP is redirected. "
+                    "Second, "
+                    "per-IP rate limiting: ten requests per second, and one per second on "
+                    "training, because training is expensive. Third, HTTP Basic "
+                    "authentication in FastAPI, with credentials loaded from Supabase Vault.",
+                    "[6 LIVE TESTS (bullet 3)] Six live tests in CI check these layers. Known "
+                    "limits: a self-signed certificate and one shared credential.",
+                    "[NEXT: JONATHAN] Now Jonathan will show you how we version the data and "
+                    "the model.",
                 ],
             },
         ],
@@ -659,7 +759,7 @@ SECTIONS = [
     },
     {
         "presenter": "Ziad",
-        "title": "Demo and limits",
+        "title": "Demo and next steps",
         "minutes": 5,
         "slides": [
             {
@@ -679,7 +779,7 @@ SECTIONS = [
                     ["Streamlit app", "src/weather_mlops/demo/app.py"],
                 ],
                 "notes": [
-                    "About 4 minutes, leaving 1 minute for limits.",
+                    "About 4 minutes, leaving 1 minute for next steps.",
                     "Before the defense: make up, make streamlit and make airflow-up. On "
                     "Gabriel's Mac, first stop Tailscale (it holds port 443) and Homebrew "
                     "httpd (it holds 8080).",
@@ -702,35 +802,45 @@ SECTIONS = [
                 ],
             },
             {
-                "id": "limits",
-                "title": "What we have not built yet",
-                "layout": "limits",
-                "stages": ["monitoring"],
+                "id": "next-steps",
+                "title": "Next steps: from laptop to production",
+                "layout": "script",
+                "stages": [],
                 "figure": None,
                 "lanes": [],
                 "points": [
-                    "Drift detection with Evidently.",
-                    "Storing each prediction with its features.",
+                    "Cloud hosting with Kubernetes: API replicas that restart on failure.",
+                    "Canary release: Nginx sends 10% of traffic to the new model first.",
+                    "Decision threshold tuned on validation to reach recall 0.75.",
+                    "Tomorrow's Open-Meteo forecast as new model features.",
+                    "Paid API: one key per client, Stripe billing per call.",
                 ],
-                "facts": [
-                    ["Tables ready", "predictions, drift_reports"],
-                    ["Lifecycle stages built", "8 of 9"],
-                ],
-                "links": [
-                    ["Schema", "supabase/schema.sql"],
+                "links": [],
+                # elements lit on the slide while each note is read
+                "focus": [
+                    ["title"],
+                    ["point-0"],
+                    ["point-1"],
+                    ["point-2"],
+                    ["point-3"],
+                    ["point-4"],
+                    [],
                 ],
                 "notes": [
-                    "About 1 minute.",
-                    "Monitoring is the one stage of the lifecycle we have not built.",
-                    "The schema is ready. predictions stores each request's features, "
-                    "class, probability, latency and model version. drift_reports stores "
-                    "whether drift was detected, the metrics, the report path and the "
-                    "MLflow run.",
-                    "Next steps in order: log every prediction, run Evidently in the DAG to "
-                    "compare recent features with the training data, then alert and retrain "
-                    "on drift.",
-                    "Prometheus and Grafana would add API latency and error alerts.",
-                    "Close with: eight of nine lifecycle stages are in place.",
+                    "[TITLE] Before your questions, five next steps.",
+                    "[1. KUBERNETES] One: leave the laptop. We host the system in the cloud, "
+                    "for example on AWS, with Kubernetes running several API replicas.",
+                    "[2. CANARY] Two: a canary release. Nginx sends ten percent of real "
+                    "traffic to the new champion first, and we keep it only if its real "
+                    "recall holds.",
+                    "[3. THRESHOLD] Three: today we cut at zero point five. We would tune the "
+                    "threshold on validation to reach recall zero point seven five.",
+                    "[4. FORECAST FEATURES] Four: our model only sees today's weather. "
+                    "Open-Meteo also forecasts tomorrow; adding that forecast as features "
+                    "should be our biggest gain.",
+                    "[5. PAID API] Five: one API key per client, and Stripe billing per "
+                    "prediction call.",
+                    "[NEXT: QUESTIONS] Thank you. We are happy to take your questions.",
                 ],
             },
             {

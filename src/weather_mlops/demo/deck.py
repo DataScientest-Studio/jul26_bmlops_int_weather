@@ -46,8 +46,8 @@ def make_points(slide, tag="ul"):
     if len(slide["points"]) == 0:
         return ""
     html = f'<{tag} class="points">'
-    for point in slide["points"]:
-        html = html + f"<li>{point}</li>"
+    for number, point in enumerate(slide["points"]):
+        html = html + f'<li data-focus="point-{number}">{point}</li>'
     return html + f"</{tag}>"
 
 
@@ -55,8 +55,8 @@ def make_facts(slide):
     if len(slide.get("facts", [])) == 0:
         return ""
     html = '<table class="facts">'
-    for label, value in slide["facts"]:
-        html = html + f"<tr><th>{label}</th><td>{value}</td></tr>"
+    for number, (label, value) in enumerate(slide["facts"]):
+        html = html + f'<tr data-focus="fact-{number}"><th>{label}</th><td>{value}</td></tr>'
     return html + "</table>"
 
 
@@ -68,15 +68,18 @@ def make_points_and_facts(slide):
     return f'<div class="split">{make_points(slide)}{facts}</div>'
 
 
-def make_lane(lane):
-    html = f'<div class="lane"><p class="lane-name">{lane["name"]}</p><ol class="lane-steps">'
+def make_lane(lane, number=0):
+    html = (
+        f'<div class="lane" data-focus="lane-{number}">'
+        f'<p class="lane-name">{lane["name"]}</p><ol class="lane-steps">'
+    )
     for step in lane["steps"]:
         html = html + f"<li>{step}</li>"
     return html + "</ol></div>"
 
 
 def make_title(slide):
-    return f'<h2 class="slide-title">{slide["title"]}</h2>'
+    return f'<h2 class="slide-title" data-focus="title">{slide["title"]}</h2>'
 
 
 def make_cover(slide):
@@ -85,10 +88,10 @@ def make_cover(slide):
         team = team + f"<li>{name}</li>"
     return (
         '<div class="cover">'
-        f'<h2 class="cover-title">{slide["title"]}</h2>'
-        '<p class="cover-lede">Next-day rain for 49 Australian weather stations, '
+        f'<h2 class="cover-title" data-focus="title">{slide["title"]}</h2>'
+        '<p class="cover-lede" data-focus="lede">Next-day rain for 49 Australian weather stations, '
         "trained, versioned and served as an MLOps pipeline.</p>"
-        f'<ul class="team">{team}</ul>'
+        f'<ul class="team" data-focus="team">{team}</ul>'
         '<p class="cover-meta">DataScientest MLOps defense, 15 October 2026</p>'
         "</div>"
     )
@@ -99,7 +102,7 @@ def make_hero(slide):
     label = slide["figure"][1]
     return (
         make_title(slide)
-        + f'<div class="hero"><p class="hero-value">{value}</p>'
+        + f'<div class="hero" data-focus="hero"><p class="hero-value">{value}</p>'
         + f'<p class="hero-label">{label}</p></div>'
         + make_points_and_facts(slide)
     )
@@ -115,7 +118,7 @@ def make_architecture(slide):
         + '<div class="arch-hub"><p class="hub-name">MLflow registry</p>'
         + '<p class="hub-note">Training registers a candidate. '
         + "The champion alias marks the version we serve.</p></div>"
-        + f'<div class="arch-predict">{make_lane(prediction)}</div>'
+        + f'<div class="arch-predict">{make_lane(prediction, 1)}</div>'
         + '<div class="arch-stores">'
         + "<span>Supabase Postgres: observations and dataset catalog</span>"
         + "<span>DVC remote: dataset snapshots</span>"
@@ -123,10 +126,58 @@ def make_architecture(slide):
     )
 
 
+# brand colour of each tool, shown as a dot before its name
+TOOL_COLORS = {
+    "Kaggle": "#20BEFF",
+    "Open-Meteo": "#FF8800",
+    "Airflow": "#017CEE",
+    "Supabase": "#3ECF8E",
+    "DVC": "#945DD6",
+    "Vault": "#10263A",
+    "MLflow": "#0194E2",
+    "XGBoost": "#189FDD",
+    "Nginx": "#009639",
+    "FastAPI": "#009688",
+    "Streamlit": "#FF4B4B",
+    "Prometheus": "#E6522C",
+    "Grafana": "#F46800",
+    "Evidently": "#ED0400",
+}
+
+
+def make_zone(zone, number):
+    tools = ""
+    for tool in zone["tools"]:
+        color = TOOL_COLORS.get(tool, "#5B6B78")
+        tools = tools + f'<li><span class="tool-dot" style="background:{color}"></span>{tool}</li>'
+    points = ""
+    for point in zone["points"]:
+        points = points + f"<li>{point}</li>"
+    return (
+        f'<div class="zone" data-focus="zone-{number}">'
+        f'<p class="zone-name">{zone["name"]}</p>'
+        f'<ul class="zone-tools">{tools}</ul>'
+        f'<ul class="zone-points">{points}</ul>'
+        "</div>"
+    )
+
+
+def make_system(slide):
+    zones = ""
+    for number, zone in enumerate(slide["zones"]):
+        zones = zones + make_zone(zone, number)
+    return (
+        make_title(slide)
+        + f'<div class="zones">{zones}</div>'
+        + f'<div class="lanes">{make_lane(slide["lanes"][0])}</div>'
+        + f'<p class="system-caption" data-focus="caption">{slide["caption"]}</p>'
+    )
+
+
 def make_flow(slide):
     lanes = ""
-    for lane in slide["lanes"]:
-        lanes = lanes + make_lane(lane)
+    for number, lane in enumerate(slide["lanes"]):
+        lanes = lanes + make_lane(lane, number)
     return make_title(slide) + f'<div class="lanes">{lanes}</div>' + make_points_and_facts(slide)
 
 
@@ -212,8 +263,7 @@ def make_closing(slide):
     return (
         '<div class="cover">'
         f'<h2 class="cover-title">{slide["title"]}</h2>'
-        '<p class="cover-lede">Eight of nine lifecycle stages are in place. '
-        "Monitoring is next.</p>"
+        '<p class="cover-lede">All nine lifecycle stages are in place.</p>'
         "</div>"
     )
 
@@ -226,6 +276,8 @@ def make_body(slide):
         return make_hero(slide)
     elif layout == "architecture":
         return make_architecture(slide)
+    elif layout == "system":
+        return make_system(slide)
     elif layout == "flow":
         return make_flow(slide)
     elif layout == "metrics":
@@ -240,14 +292,28 @@ def make_body(slide):
         return make_title(slide) + make_points_and_facts(slide)
 
 
-def render_slide(index):
+def focus_style(slide, cue):
+    # cue is the index of the speaker note being read, -1 when nothing is pointed at
+    if cue < 0 or cue >= len(slide.get("focus", [])) or len(slide["focus"][cue]) == 0:
+        return ""
+    lit = ""
+    for target in slide["focus"][cue]:
+        lit = lit + f', .slide [data-focus="{target}"]'
+    return (
+        "<style>.slide [data-focus] { opacity: 0.25; }"
+        f"{lit[2:]} {{ opacity: 1; outline: 3px solid #F5B700; outline-offset: 4px; }}</style>"
+    )
+
+
+def render_slide(index, cue=-1):
     slides = all_slides()
     section, slide = slides[index]
     rail = ""
     if len(slide["stages"]) > 0:
         rail = make_rail(slide["stages"])
     return (
-        f'<section class="slide layout-{slide["layout"]}">'
+        focus_style(slide, cue)
+        + f'<section class="slide layout-{slide["layout"]}">'
         + rail
         + f'<div class="slide-body">{make_body(slide)}</div>'
         + make_footer(slide, section["presenter"], index + 1, len(slides))

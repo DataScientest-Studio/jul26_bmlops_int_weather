@@ -22,8 +22,14 @@ NOTES_STYLES = (
     ".speaker-notes { font-family: 'IBM Plex Sans', sans-serif; font-size: 1.35rem;"
     " line-height: 1.55; color: #E8EEF2; max-width: 60ch; }"
     " .speaker-notes li { margin-bottom: 0.8rem; }"
+    " .note-cue { display: block; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.06em;"
+    " color: #F5B700; }"
+    " .speaker-notes li.is-active { border-left: 4px solid #F5B700; padding-left: 0.6rem; }"
 )
-# keys: n or right arrow = next, p or left arrow = previous, s = speaker notes
+# the point buttons only exist for the keyboard, the audience does not see them
+HIDDEN_BUTTONS = ".st-key-cue_back, .st-key-cue_next { display: none; }"
+# keys: n or right arrow = next, p or left arrow = previous, s = speaker notes,
+# j or down arrow = highlight the next point, k or up arrow = the previous point
 DECK_SHORTCUTS = """
 <script>
 if (!window.__deckShortcuts) {
@@ -41,6 +47,14 @@ if (!window.__deckShortcuts) {
     const key = event.key.toLowerCase();
     if (key === "n" || key === "arrowright") clickButton("Next");
     if (key === "p" || key === "arrowleft") clickButton("Previous");
+    if (key === "j" || key === "arrowdown") {
+      event.preventDefault();
+      clickButton("Next point");
+    }
+    if (key === "k" || key === "arrowup") {
+      event.preventDefault();
+      clickButton("Previous point");
+    }
     if (key === "s") {
       window.open(window.location.pathname + "?view=notes", "weather-speaker-notes");
     }
@@ -184,7 +198,7 @@ def _show_prediction(response: requests.Response) -> None:
 @st.cache_resource
 def _live_position():
     # shared by all browser windows, so the notes window follows the deck
-    return {"index": 0}
+    return {"index": 0, "cue": -1}
 
 
 def _step_deck(step):
@@ -195,17 +209,37 @@ def _step_deck(step):
     if new_index > last:
         new_index = last
     st.session_state.deck = new_index
+    st.session_state.cue = -1
+
+
+def _reset_cue():
+    st.session_state.cue = -1
+
+
+def _step_cue(step):
+    section, slide = all_slides()[st.session_state.deck]
+    last = len(slide["notes"]) - 1
+    new_cue = st.session_state.cue + step
+    if new_cue < -1:
+        new_cue = -1
+    if new_cue > last:
+        new_cue = last
+    st.session_state.cue = new_cue
 
 
 def _render_presentation():
-    st.markdown(f"<style>{DECK_STYLES}{DECK_WIDTH}</style>", unsafe_allow_html=True)
+    st.markdown(f"<style>{DECK_STYLES}{DECK_WIDTH}{HIDDEN_BUTTONS}</style>", unsafe_allow_html=True)
     st.html(DECK_SHORTCUTS, unsafe_allow_javascript=True)
     slides = all_slides()
     if "deck" not in st.session_state:
         st.session_state.deck = 0
+    if "cue" not in st.session_state:
+        st.session_state.cue = -1
     index = st.session_state.deck
+    cue = st.session_state.cue
     _live_position()["index"] = index
-    st.markdown(render_slide(index), unsafe_allow_html=True)
+    _live_position()["cue"] = cue
+    st.markdown(render_slide(index, cue), unsafe_allow_html=True)
     section, slide = slides[index]
     if slide["id"] == "demo":
         _render_live(DEFAULT_API_URL.rstrip("/"))
@@ -217,15 +251,19 @@ def _render_presentation():
         options=list(range(len(slides))),
         format_func=slide_label,
         key="deck",
+        on_change=_reset_cue,
         label_visibility="collapsed",
     )
     col3.button("Next", on_click=_step_deck, args=(1,), disabled=index == len(slides) - 1)
+    st.button("Previous point", key="cue_back", on_click=_step_cue, args=(-1,))
+    st.button("Next point", key="cue_next", on_click=_step_cue, args=(1,))
 
 
 @st.fragment(run_every=1)
 def _follow_deck():
     slides = all_slides()
     index = _live_position()["index"]
+    cue = _live_position()["cue"]
     section, slide = slides[index]
     st.markdown(
         f'<p class="kicker">Slide {index + 1} of {len(slides)}, '
@@ -234,8 +272,15 @@ def _follow_deck():
         unsafe_allow_html=True,
     )
     notes = ""
-    for note in slide["notes"]:
-        notes = notes + f"<li>{note}</li>"
+    for number, note in enumerate(slide["notes"]):
+        # "[DATA SOURCES] text": the label names the part of the slide to point at
+        if note.startswith("["):
+            label, note = note[1:].split("] ", 1)
+            note = f'<span class="note-cue">{label}</span>{note}'
+        css = ""
+        if number == cue:
+            css = ' class="is-active"'
+        notes = notes + f"<li{css}>{note}</li>"
     st.markdown(f'<ul class="speaker-notes">{notes}</ul>', unsafe_allow_html=True)
     if index + 1 < len(slides):
         next_section, next_slide = slides[index + 1]
@@ -243,7 +288,10 @@ def _follow_deck():
         if next_section["presenter"] != section["presenter"]:
             text = text + f" Hand over to {next_section['presenter']}."
         st.caption(text)
-    st.caption("Keys on the deck window: N or → next, P or ← previous, S reopens these notes.")
+    st.caption(
+        "Keys on the deck window: N or → next, P or ← previous, "
+        "J or ↓ highlight the next point, K or ↑ the previous one, S reopens these notes."
+    )
 
 
 def _render_notes():
