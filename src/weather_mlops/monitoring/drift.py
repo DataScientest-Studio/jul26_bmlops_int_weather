@@ -191,6 +191,105 @@ def store_drift_report(
     supabase.table(settings.supabase_drift_reports_table).insert(row).execute()
 
 
+def reference_dataset_sha256(reference_path: Path) -> str | None:
+    """Hash of the processed split the reference rows come from, when it has a manifest."""
+
+    from weather_mlops.data.manifest import read_processed_manifest
+
+    manifest = read_processed_manifest(Path(reference_path).parent / "manifest.json")
+    if manifest is None or not manifest.get("sha256"):
+        return None
+    return str(manifest["sha256"])
+
+
+def monitoring_metrics(
+    feature: dict[str, Any],
+    performance: dict[str, Any] | None,
+) -> dict[str, float]:
+    """Flatten one batch into MLflow metrics: drift per feature, then delayed performance."""
+
+    metrics = {
+        "feature_drift_detected": float(bool(feature.get("drift_detected"))),
+        "drifted_column_share": float(feature.get("share") or 0),
+        "drifted_column_count": float(feature.get("count") or 0),
+    }
+    for column, values in (feature.get("column_metrics") or {}).items():
+        metrics[f"psi_{column}"] = float(values["drift_score"])
+    if performance:
+        metrics["labeled_predictions"] = float(performance.get("labeled_predictions") or 0)
+        metrics["retrain_requested"] = float(bool(performance.get("retrain")))
+        for name, value in (performance.get("metrics") or {}).items():
+            metrics[f"delayed_{name}"] = float(value)
+    return metrics
+
+
+def serving_model_tags(client: Any) -> dict[str, str]:
+    """Which model made the monitored predictions: the version holding @champion.
+
+    model_dataset_sha256 is the champion's own training data. When it differs from
+    dataset_sha256, the report compared against another split than the served model's.
+    """
+
+    try:
+        version = client.get_model_version_by_alias(
+            settings.mlflow_model_name, settings.mlflow_champion_alias
+        )
+    except Exception:  # noqa: BLE001 - no champion yet: the API serves its local file
+        return {"model_alias": "none"}
+    tags = {
+        "model_name": settings.mlflow_model_name,
+        "model_alias": settings.mlflow_champion_alias,
+        "model_version": str(version.version),
+        "model_run_id": str(version.run_id),
+    }
+    model_dataset = client.get_run(version.run_id).data.tags.get("dataset_sha256")
+    if model_dataset:
+        tags["model_dataset_sha256"] = model_dataset
+    return tags
+
+
+def log_monitoring_run(
+    feature: dict[str, Any],
+    performance: dict[str, Any] | None,
+    *,
+    reference_path: Path,
+    html_path: Path,
+) -> str | None:
+    """Track one Evidently batch in MLflow, tagged with the training split's dataset hash."""
+
+    if not settings.mlflow_tracking_uri:
+        print("MLflow tracking URI is not set; skipping monitoring run logging.")
+        return None
+    try:
+        import mlflow
+        from mlflow.tracking import MlflowClient
+
+        mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
+        mlflow.set_experiment(settings.mlflow_monitoring_experiment_name)
+        model_tags = serving_model_tags(MlflowClient(tracking_uri=settings.mlflow_tracking_uri))
+        with mlflow.start_run(run_name=f"evidently-{feature['current_dataset']}") as run:
+            mlflow.set_tags(
+                {
+                    "stage": "monitoring",
+                    "dataset_sha256": reference_dataset_sha256(reference_path) or "",
+                    "reference_dataset": str(feature["reference_dataset"]),
+                    "current_dataset": str(feature["current_dataset"]),
+                    **model_tags,
+                }
+            )
+            mlflow.log_metrics(monitoring_metrics(feature, performance))
+            mlflow.log_artifact(str(html_path), artifact_path="evidently")
+            summary = {"feature_drift": feature, "performance": performance}
+            mlflow.log_dict(json.loads(json.dumps(summary, default=str)), "evidently/summary.json")
+            return run.info.run_id
+    except Exception as exc:  # noqa: BLE001 - a registry outage must not stop the report
+        print(
+            f"MLflow tracking URI {settings.mlflow_tracking_uri} is unreachable; "
+            f"skipping monitoring run logging ({exc})."
+        )
+        return None
+
+
 def load_serving_feature_rows(client: Any | None = None) -> list[dict[str, Any]]:
     from weather_mlops.data.database import get_supabase_client
 
@@ -262,6 +361,23 @@ def run_drift_job(
     summary["current_dataset"] = current_label
     summary["reference_dataset"] = str(path)
 
+    performance = None
+    if not simulate:
+        metrics = delayed_performance(serving_rows)
+        if metrics is not None:
+            performance = performance_decision(metrics)
+            performance["labeled_predictions"] = sum(
+                row.get("observed_label") in {"Yes", "No"} for row in serving_rows
+            )
+
+    # MLflow first, so both Postgres rows can point at the run that holds the report
+    mlflow_run_id = log_monitoring_run(
+        summary,
+        performance,
+        reference_path=path,
+        html_path=html_path,
+    )
+
     store_drift_report(
         {
             "scope": "feature_drift",
@@ -274,30 +390,24 @@ def run_drift_job(
                 "share": summary["share"],
             },
             "report_html_path": str(html_path),
+            "mlflow_run_id": mlflow_run_id,
         },
         client=catalog_client,
     )
+    if performance is not None:
+        store_drift_report(
+            {
+                "scope": "performance",
+                "reference_dataset": summary["reference_dataset"],
+                "current_dataset": current_label,
+                "drift_detected": performance["retrain"],
+                "metrics": performance,
+                "mlflow_run_id": mlflow_run_id,
+            },
+            client=catalog_client,
+        )
 
-    performance = None
-    if not simulate:
-        metrics = delayed_performance(serving_rows)
-        if metrics is not None:
-            performance = performance_decision(metrics)
-            performance["labeled_predictions"] = sum(
-                row.get("observed_label") in {"Yes", "No"} for row in serving_rows
-            )
-            store_drift_report(
-                {
-                    "scope": "performance",
-                    "reference_dataset": summary["reference_dataset"],
-                    "current_dataset": current_label,
-                    "drift_detected": performance["retrain"],
-                    "metrics": performance,
-                },
-                client=catalog_client,
-            )
-
-    result = {"feature_drift": summary, "performance": performance}
+    result = {"feature_drift": summary, "performance": performance, "mlflow_run_id": mlflow_run_id}
     if settings.pushgateway_url:
         from weather_mlops.monitoring.metrics import push_monitoring_metrics
 
