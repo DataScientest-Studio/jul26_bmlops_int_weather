@@ -18,63 +18,66 @@ STAGES = [
 
 TEAM = ["Gabriel", "Jonathan", "Thomas", "Ziad"]
 
-# rounded values from reports/metrics/*.json (make pipeline, 25 Sep 2026)
+# latest candidate (rolling windows) on the DVC snapshot of 2 Oct 2026, code of commit
+# 32ea7ea. Re-read them in MLflow on the demo machine before the defense.
 METRICS = {
-    "ROC-AUC": {"Train": 0.893, "Validation": 0.871, "Test": 0.866},
-    "Recall": {"Train": 0.8, "Validation": 0.726, "Test": 0.762},
-    "Precision": {"Train": 0.56, "Validation": 0.535, "Test": 0.543},
+    "ROC-AUC": {"Train": 0.862, "Validation": 0.782, "Test": 0.814},
+    "Recall": {"Train": 0.78, "Validation": 0.673, "Test": 0.705},
+    "Precision": {"Train": 0.515, "Validation": 0.485, "Test": 0.506},
 }
 RECALL_GATE = 0.75
 
-# roc curve of the model on the test set: [false positive rate, true positive rate]
+# roc curve of the same candidate on the validation window (18 Mar to 15 Jun 2019, 4,410 rows):
+# [false positive rate, true positive rate]
 ROC_POINTS = [
     [0.0, 0.0],
-    [0.004, 0.162],
-    [0.008, 0.246],
-    [0.013, 0.294],
-    [0.019, 0.332],
-    [0.024, 0.365],
-    [0.03, 0.405],
-    [0.037, 0.434],
-    [0.044, 0.464],
-    [0.05, 0.489],
-    [0.058, 0.515],
-    [0.066, 0.541],
-    [0.075, 0.564],
-    [0.084, 0.587],
-    [0.093, 0.606],
-    [0.102, 0.626],
-    [0.113, 0.645],
-    [0.123, 0.662],
-    [0.136, 0.683],
-    [0.148, 0.7],
-    [0.162, 0.719],
-    [0.176, 0.738],
-    [0.188, 0.756],
-    [0.202, 0.773],
-    [0.217, 0.789],
-    [0.234, 0.806],
-    [0.252, 0.821],
-    [0.274, 0.836],
-    [0.297, 0.85],
-    [0.322, 0.865],
-    [0.353, 0.879],
-    [0.379, 0.894],
-    [0.415, 0.907],
-    [0.458, 0.92],
-    [0.5, 0.934],
-    [0.545, 0.947],
-    [0.596, 0.96],
-    [0.669, 0.974],
-    [0.768, 0.987],
+    [0.001, 0.007],
+    [0.006, 0.038],
+    [0.012, 0.076],
+    [0.018, 0.119],
+    [0.029, 0.17],
+    [0.042, 0.227],
+    [0.055, 0.271],
+    [0.066, 0.317],
+    [0.076, 0.364],
+    [0.09, 0.402],
+    [0.105, 0.441],
+    [0.119, 0.471],
+    [0.136, 0.503],
+    [0.151, 0.532],
+    [0.17, 0.562],
+    [0.189, 0.593],
+    [0.214, 0.618],
+    [0.241, 0.644],
+    [0.262, 0.673],
+    [0.282, 0.702],
+    [0.304, 0.722],
+    [0.33, 0.747],
+    [0.36, 0.778],
+    [0.392, 0.81],
+    [0.424, 0.826],
+    [0.456, 0.848],
+    [0.491, 0.861],
+    [0.526, 0.881],
+    [0.564, 0.892],
+    [0.601, 0.921],
+    [0.644, 0.933],
+    [0.695, 0.949],
+    [0.744, 0.963],
+    [0.796, 0.975],
+    [0.85, 0.991],
+    [0.908, 0.997],
+    [0.955, 0.999],
+    [0.996, 1.0],
     [1.0, 1.0],
 ]
-ROC_AUC = 0.866
+ROC_AUC = 0.782
 # cut-off, share of rainy days caught, share of dry days flagged as rain
 CUTOFFS = [
-    [0.3, 0.910, 0.427],
-    [0.5, 0.762, 0.191],
-    [0.7, 0.565, 0.075],
+    [0.3, 0.861, 0.491],
+    [0.42, 0.751, 0.337],
+    [0.5, 0.673, 0.262],
+    [0.7, 0.441, 0.105],
 ]
 
 SECTIONS = [
@@ -392,7 +395,7 @@ SECTIONS = [
         "slides": [
             {
                 "id": "lineage",
-                "title": "Data and lineage",
+                "title": "Data lineage: two sources, one schema, one hash",
                 "layout": "flow",
                 "stages": ["data", "versioning"],
                 "figure": None,
@@ -400,107 +403,117 @@ SECTIONS = [
                     {
                         "name": "From source to training run",
                         "steps": [
-                            "WeatherAUS and Open-Meteo",
-                            "Merge",
-                            "Preprocess",
+                            "Kaggle + Open-Meteo",
+                            "Rolling split",
                             "sha256 manifest",
+                            "DVC snapshot",
                             "MLflow run",
                         ],
                     },
                 ],
                 "points": [
-                    "145,509 daily rows from 49 stations.",
-                    "WeatherAUS covers 2007 to 2017. Open-Meteo adds new days.",
-                    "DVC stores snapshots. A make target registers them in Postgres.",
+                    "Kaggle WeatherAUS: 145,460 daily station rows, 2007 to June 2017.",
+                    "Open-Meteo: same 23 columns, backfilled from June 2017 to Sep 2019.",
+                    "Split by date: 5 years to train, then 90 days each to validate and test.",
                 ],
                 "facts": [
-                    ["Train rows", "93,076"],
-                    ["Validation rows", "24,358"],
-                    ["Test rows", "24,808"],
-                    ["Stations", "49"],
+                    ["DVC snapshot, 2 Oct", "185,150 rows, 49 stations"],
+                    ["Train, 5 years", "Mar 2014 to Mar 2019"],
+                    ["Validation, 90 days", "Mar to Jun 2019"],
+                    ["Test, 90 days", "Jun to Sep 2019"],
+                    ["Open-Meteo share: train, val, test", "35%, 100%, 100%"],
                 ],
                 "links": [
                     ["DVC pipeline", "dvc.yaml"],
+                    ["Rolling split", "src/weather_mlops/data/preprocess.py"],
                     ["Manifest", "src/weather_mlops/data/manifest.py"],
-                    ["Schema", "supabase/schema.sql"],
+                ],
+                # elements lit on the slide while each note is read
+                "focus": [
+                    ["title"],
+                    ["point-0"],
+                    ["point-1"],
+                    ["lane-0", "point-2", "fact-1", "fact-2", "fact-3"],
+                    ["lane-0", "fact-0"],
+                    ["fact-4"],
                 ],
                 "notes": [
-                    "About 2.5 minutes.",
-                    "Seed: the WeatherAUS CSV, 145,460 daily rows from 49 stations, 1 Nov "
-                    "2007 to 25 Jun 2017.",
-                    "Ingestion calls the Open-Meteo archive API for each station's "
-                    "coordinates and converts the answer to the WeatherAUS columns. So far "
-                    "it has added one day, 1 Sep 2026: 49 rows, for 145,509 in total. Be "
-                    "upfront about the nine-year gap.",
-                    "merge_raw joins the seed and every Open-Meteo file, drops duplicates "
-                    "on date and station keeping the newest, and sorts. version_raw then "
-                    "writes the sha256 of the merged file.",
-                    "Preprocess drops rows without a date or label and maps Yes/No to 1/0. "
-                    "The split is temporal, 70/15/15 by date, so the test set is the most "
-                    "recent period and no future weather leaks into training.",
-                    "Imputation, scaling and one-hot encoding live inside the model "
-                    "pipeline, not in the CSVs. So serving applies exactly the "
-                    "preprocessing used in training.",
-                    "Each processed set gets a manifest: its sha256, the parent raw sha256, "
-                    "the preprocessing version, the git commit and the split fractions. "
-                    "Training refuses to start if the manifest is missing or does not match "
-                    "the files.",
-                    "DVC describes six stages in dvc.yaml and stores the files in the "
-                    "weather-mlops-dvc bucket on Supabase Storage. make dvc-pull restores "
-                    "the team's baseline on any laptop.",
-                    "make register-dataset records a snapshot in the Postgres "
-                    "dataset_versions table.",
-                    "If asked whether the nightly data can be rebuilt: the nightly job "
-                    "hashes the data but does not push it. Pushing is manual, with make "
-                    "dvc-push.",
+                    "[TITLE] Thank you, Gabriel. Every model we serve must lead back to the exact "
+                    "data that trained it, so I start with the data.",
+                    "[KAGGLE (bullet 1)] Our labelled history is the Kaggle WeatherAUS file: a "
+                    "hundred and forty-five thousand daily rows from forty-nine stations, up to "
+                    "June 2017.",
+                    "[OPEN-METEO (bullet 2)] To go further, we call the "
+                    "Open-Meteo archive API at each station's coordinates and convert the answer "
+                    "into the same twenty-three columns. Our resumable backfill reaches September "
+                    "2019 so far; the seven years after that are not filled yet.",
+                    "[LANE + ROLLING SPLIT (bullet 3) + TABLE: windows] Both sources are merged "
+                    "and split by date, never at random, so no future weather leaks into training. "
+                    "The windows count the days we actually have, and our data stops in September "
+                    "2019. So today we train on March 2014 to March 2019, validate on the next "
+                    "ninety days, and test on the ninety days up to September 2019.",
+                    "[MANIFEST, DVC, MLFLOW + TABLE: snapshot] Each split gets a manifest with the "
+                    "SHA-256 of every file, its raw parent's hash and the git commit, and training "
+                    "refuses files that do not match it. DVC, in no-Git mode as the brief asks, "
+                    "stores the snapshots, and the same hash goes into Postgres and into every "
+                    "MLflow run. Our Evidently drift reports are logged to MLflow with that hash "
+                    "too, so every report says which training data it compared against.",
+                    "[TABLE: Open-Meteo share] Keep one number in mind: validation and test are "
+                    "one hundred percent Open-Meteo, while training is still two-thirds station "
+                    "data. And Open-Meteo is a weather model's estimate, not the station's own "
+                    "instruments.",
                 ],
             },
             {
                 "id": "promotion",
-                "title": "Tracking and the promotion gate",
+                "title": "Model registry: only the gate moves @champion",
                 "layout": "metrics",
                 "stages": ["tracking", "registry"],
                 "figure": None,
                 "lanes": [],
                 "points": [
-                    "Each training run registers a candidate.",
-                    "Promote only if ROC-AUC beats the champion and recall is at least 0.75.",
-                    "Latest run: validation recall 0.726, so compare rejected it.",
+                    "Every run is tracked in MLflow with its data hash and git commit, then "
+                    "registered as @candidate.",
+                    "Promote only if validation recall is at least 0.75 and ROC-AUC beats "
+                    "@champion.",
+                    "Latest candidate: validation recall 0.673, so the champion stays.",
                 ],
                 "links": [
                     ["Promotion rule", "src/weather_mlops/models/comparison.py"],
                     ["Tracking", "src/weather_mlops/models/tracking.py"],
+                    ["Baseline", "src/weather_mlops/models/baseline.py"],
+                ],
+                # elements lit on the slide while each note is read
+                "focus": [
+                    ["title"],
+                    ["point-0"],
+                    ["point-1"],
+                    ["point-2"],
+                    [],
+                    [],
                 ],
                 "notes": [
-                    "About 2 minutes.",
-                    "Model: XGBoost with 250 trees, depth 4, learning rate 0.05, subsample "
-                    "and column sample 0.9. The class weight is the ratio of dry to rainy "
-                    "days in the training set: 3.38 in the latest run.",
-                    "Every run logs to MLflow: the parameters including row and class "
-                    "counts, the training metrics, the metrics file, the model file, the "
-                    "dataset manifest, and the whole preprocessing-plus-model pipeline.",
-                    "Each run is tagged with the dataset sha256, the parent sha256, the git "
-                    "commit and the preprocessing version, so any model traces back to its "
-                    "exact data and code.",
-                    "Every run registers a new version of weather-rainfall-classifier and "
-                    "moves the candidate alias to it. Only compare can move the champion "
-                    "alias.",
-                    "Compare first checks that the validation metrics, the model file and "
-                    "the dataset hash belong to the same run. Then it promotes only if "
-                    "validation ROC-AUC beats the champion and recall is at least 0.75.",
-                    "Three outcomes: promoted, kept_previous, rejected_recall. On promotion "
-                    "it moves the champion alias, tags the version champion, and copies the "
-                    "model to best_model.joblib.",
-                    "Read the chart: ROC-AUC is 0.893 on train, 0.871 on validation and "
-                    "0.866 on test. The small drop suggests little overfitting.",
-                    "Say the precision out loud: 0.54. We accept more false alarms to catch rain.",
-                    "The gate worked on our own model: run 4d5c45cd reached validation "
-                    "ROC-AUC 0.871 but recall 0.726, so it stayed a candidate. The Airflow "
-                    "run on 25 Sep made the same decision.",
-                    "So there is no champion yet. A possible next step is a recall-targeted "
-                    "decision threshold; it is not built.",
-                    "The MLflow server keeps runs in SQLite and artifacts in the "
-                    "weather-mlops-mlflow bucket.",
+                    "[TITLE] Once a dataset has a hash, every model can point to it.",
+                    "[MLFLOW (bullet 1)] Every training run logs its parameters, metrics, model "
+                    "and dataset manifest to MLflow, tagged with the dataset hash and the git "
+                    "commit. So any model traces back to its exact data and code. Each run also "
+                    "becomes a new model version, with the candidate alias.",
+                    "[GATE (bullet 2)] The API serves only the champion alias. Our first champion "
+                    "came from make baseline: a twelve-trial random search on Kaggle data, then a "
+                    "refit on all Kaggle rows. From then on, only the gate moves the champion: "
+                    "validation recall of at least zero point seven five, and a higher validation "
+                    "ROC-AUC than the champion. It also refuses runs from uncommitted code.",
+                    "[CHART + LATEST CANDIDATE (bullet 3)] This chart is our latest candidate, "
+                    "trained on the rolling window. On validation, ROC-AUC is zero point seven "
+                    "eight and recall zero point six seven, below the dashed line. So the gate "
+                    "rejected it, and the champion stayed.",
+                    "[CHART: TRAIN VS VALIDATION] Why the drop after training? Mostly the data "
+                    "source. We checked it: one model scores zero point eight seven on the next "
+                    "year of station data, and only zero point seven six on the next year of "
+                    "Open-Meteo data.",
+                    "[KNOWN LIMIT] One known limit: the gate compares with the score the champion "
+                    "got at its own promotion, on an older window. Re-scoring the champion on the "
+                    "candidate's window is our next fix.",
                 ],
             },
             {
@@ -512,25 +525,48 @@ SECTIONS = [
                 "lanes": [],
                 "points": [
                     "Each point is one cut-off between rain and no rain.",
-                    "The area under the curve is ROC-AUC: 0.866. Always no gets 0.5.",
-                    "We serve the 0.5 cut-off: 76.2% of rainy days caught.",
+                    "The area under the curve is ROC-AUC: 0.782. Always no gets 0.5.",
+                    "At our 0.5 cut-off: 67.3% of rainy days caught.",
+                    "A 0.42 cut-off would meet the recall rule: 75.1% of rainy days caught.",
                 ],
                 "links": [
                     ["Evaluation", "src/weather_mlops/models/evaluation.py"],
                 ],
+                # elements lit on the slide while each note is read
+                "focus": [
+                    ["title"],
+                    [],
+                    ["point-0"],
+                    ["point-1"],
+                    ["point-2"],
+                    ["point-3"],
+                    [],
+                ],
                 "notes": [
-                    "About 1 minute. Then hand over to Thomas.",
-                    "ROC stands for Receiver Operating Characteristic, AUC for Area Under "
-                    "the Curve. The curve is computed on the 24,808 test rows.",
-                    "Up means more rainy days caught. Right means more dry days wrongly "
-                    "flagged as rain.",
-                    "The dots are three cut-offs: 0.3 catches 91.0% of rainy days but flags "
-                    "42.7% of dry days; 0.5, the one we serve, catches 76.2% and flags "
-                    "19.1%; 0.7 catches 56.5% and flags 7.5%.",
-                    "The dashed diagonal is a model with no skill, area 0.5. Always "
-                    "answering no is its bottom-left corner.",
-                    "Accuracy would prefer the 0.7 cut-off, 84.2% accuracy, while missing "
-                    "2,472 rainy days instead of 1,355. The recall guardrail stops that.",
+                    "[TITLE] Last, the ROC curve of the same candidate, on its ninety validation "
+                    "days, where the gate decides: four thousand four hundred and ten rows. ROC "
+                    "means Receiver Operating Characteristic.",
+                    "[CHART AXES] Up means more rainy days caught. Right means more dry days "
+                    "wrongly flagged as rain.",
+                    "[EACH POINT (bullet 1) + DOTS AND TABLE] Each point is one cut-off between "
+                    "rain and no rain. At zero point three, we catch eighty-six percent of rainy "
+                    "days, but flag half of the dry days; at zero point seven, only forty-four "
+                    "percent, for ten percent false alarms.",
+                    "[AREA (bullet 2) + DIAGONAL] The area under the curve is the ROC-AUC: zero "
+                    "point seven eight, the validation bar of my previous slide. The dashed "
+                    "diagonal is a model with no skill, area zero point five; always answering no "
+                    "is its bottom-left corner.",
+                    "[OUR CUT-OFF (bullet 3)] We use zero point five: sixty-seven percent caught, "
+                    "the recall the gate rejected. Accuracy would prefer zero point seven, "
+                    "seventy-seven percent instead of seventy-two, but would miss six hundred and "
+                    "sixty-two rainy days instead of three hundred and eighty-eight.",
+                    "[CUT-OFF 0.42 (bullet 4) + TABLE] The highest cut-off that meets our recall "
+                    "rule is zero point four two: seventy-five percent caught here, seventy-nine "
+                    "on the test days, for a third of dry days flagged. A cut-off does not change "
+                    "the ROC-AUC, so the second rule still needs the fix I mentioned: on the same "
+                    "window, this candidate beats the champion.",
+                    "[NEXT: THOMAS] So the gate decides which model our users get. Thomas will "
+                    "now show how we serve it.",
                 ],
             },
         ],
