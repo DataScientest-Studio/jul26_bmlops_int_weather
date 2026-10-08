@@ -413,8 +413,8 @@ SECTIONS = [
                 ],
                 "points": [
                     "Kaggle WeatherAUS: 145,460 daily station rows, 2007 to June 2017.",
-                    "Open-Meteo: same 23 columns, backfilled from June 2017 to Sep 2019.",
-                    "Split by date: 5 years to train, then 90 days each to validate and test.",
+                    "Open-Meteo: same 23 columns.",
+                    "Split by date",
                 ],
                 "facts": [
                     ["DVC snapshot, 2 Oct", "185,150 rows, 49 stations"],
@@ -456,8 +456,7 @@ SECTIONS = [
                     "SHA-256 of every file, its raw parent's hash and the git commit, and training "
                     "refuses files that do not match it. DVC, in no-Git mode as the brief asks, "
                     "stores the snapshots, and the same hash goes into Postgres and into every "
-                    "MLflow run. Our Evidently drift reports are logged to MLflow with that hash "
-                    "too, so every report says which training data it compared against.",
+                    "MLflow run.",
                     "[TABLE: Open-Meteo share] Keep one number in mind: validation and test are "
                     "one hundred percent Open-Meteo, while training is still two-thirds station "
                     "data. And Open-Meteo is a weather model's estimate, not the station's own "
