@@ -625,64 +625,64 @@ SECTIONS = [
                     "to 15. It returns metrics on the training and on the validation data, "
                     "and clears the prediction cache.",
                     "Every answer includes the model that served it: name, alias, version, source.",
+                    "Every prediction is also logged to Supabase with its features, result, "
+                    "latency and model. A day later we know the real weather, so we can "
+                    "measure how good the model really was. More on that in monitoring.",
                     "The API checks the champion alias on each prediction, so a promotion "
                     "or rollback takes effect without a restart.",
                 ],
             },
             {
                 "id": "orchestration",
-                "title": "Scheduled retraining with Airflow",
+                "title": "Two DAGs: watch daily, retrain on demand",
                 "layout": "flow",
                 "stages": ["orchestration"],
                 "figure": None,
                 "lanes": [
                     {
-                        "name": "Scheduled daily at 18:00 CEST, or on drift alert",
-                        "steps": ["Ingest", "Preprocess", "Train", "Validate", "Compare"],
+                        "name": "weather_pipeline, daily at 18:00 Berlin",
+                        "steps": ["Ingest", "Preprocess", "Add outcomes", "Evidently"],
+                    },
+                    {
+                        "name": "weather_retrain, on Grafana alert",
+                        "steps": ["Train", "Validate", "Compare"],
                     },
                 ],
                 "points": [
                     "Each task runs one of our Docker images.",
+                    "We check the model every day, but train only when it got worse.",
                     "Training goes through the gateway, like any client.",
-                    "DAG can be triggered via Grafana-Webhook",
                 ],
                 "facts": [
-                    ["Schedule", "daily, 18:00 CEST"],
-                    ["Tasks", "5"],
+                    ["DAGs", "2"],
+                    ["Schedule", "daily, 18:00 Berlin"],
+                    ["Retrain trigger", "Grafana webhook, max 1/day"],
                     ["Retries", "3, one minute apart"],
-                    ["Verified run", "25 Sep: 5 of 5 in 44 s"],
                 ],
                 "links": [
-                    ["Airflow DAG", "airflow/dags/weather_dag.py"],
+                    ["Airflow DAGs", "airflow/dags/weather_dag.py"],
                 ],
                 "notes": [
                     "About 1.5 minutes.",
-                    "Airflow 2.8.1 runs as its own Compose stack: a Postgres 13 metadata "
-                    "database, the web server, the scheduler, and a LocalExecutor.",
-                    "The DAG weather_pipeline has five tasks: ingestion, preprocess, train, "
-                    "evaluation, compare. It runs daily at 18:00 Berlin time. No "
-                    "catch-up: after downtime only the latest missed run is executed.",
-                    "Second trigger: when the drift alert fires, Grafana starts the DAG "
-                    "through the Airflow REST API. For this the Airflow web server also "
-                    "joins our Docker network.",
-                    "Each task is a DockerOperator that runs one of our images, so Airflow "
-                    "runs the same code as Compose. Containers are removed after each task.",
-                    "Ingestion and preprocess can write the data folder. Train, evaluation "
-                    "and compare mount it read-only and write only models and reports.",
+                    "Two DAGs. weather_pipeline runs every day at 18:00 Berlin time, which "
+                    "is 16:00 UTC now. It fetches new weather, cleans it, adds the real "
+                    "outcome to past predictions, and runs the Evidently monitoring job.",
+                    "weather_retrain has no schedule. It trains, validates and compares with "
+                    "the champion. Grafana starts it through the Airflow REST API when the "
+                    "real recall drops. For this the Airflow web server joins our Docker "
+                    "network.",
+                    "Why split them: checking is cheap, training is not. And retraining on "
+                    "a fixed schedule would train even when nothing is wrong.",
+                    "Each task is a DockerOperator that runs one of our images "
+                    "and containers are removed after each task.",
                     "The train task calls POST /train through Nginx like any client, so the "
-                    "stack must be up (make up).",
+                    "stack must be up.",
                     "Airflow reaches Docker through a socket proxy that allows containers, "
                     "images and POST calls, and denies network management.",
-                    "Each task retries up to 3 times, one minute apart. The DAG runs "
-                    "validation only; the test-set evaluation is make pipeline.",
-                    "Verified 25 Sep 2026: a scheduled run succeeded. All five tasks passed "
-                    "on the first try, in 44 seconds. It fetched 49 new rows, retrained, "
-                    "and compare rejected the model on recall (0.726), the same decision "
-                    "as make pipeline.",
-                    "Verified 28 Sep 2026: the Grafana webhook started a run, visible in "
-                    "Airflow with the run config triggered_by grafana.",
-                    "The run history is in the Airflow UI at localhost:8081. The DAG starts "
-                    "paused (Airflow setting) and stays paused until unpaused.",
+                    "Each task retries up to 3 times, one minute apart. No catch-up: after "
+                    "downtime only the latest missed run is executed.",
+                    "A retrained model only becomes champion if it "
+                    "passes the recall gate and beats the current champion.",
                 ],
             },
             {
@@ -712,17 +712,18 @@ SECTIONS = [
                 ],
                 "notes": [
                     "About 45 seconds. Keep it short, the lanes say most of it.",
+                    "The first line is our continuous integration. "
                     "CI runs on every push and pull request to master, in two jobs.",
                     "Job one: ruff lint and format check, then the unit tests.",
                     "Job two, in Docker: build all seven images, start the API and Nginx, "
-                    "and run the live gateway tests against them: redirect, TLS, 401 "
-                    "without credentials, and 429 on a burst.",
-                    "Release, on push to master: push the ingestion, preprocess and API "
-                    "images to ghcr.io.",
+                    "and run the live gateway tests against them.",
+                    "The second line is our release. "
+                    "Every time code lands on master, GitHub builds our ingestion, "
+                    "preprocess and API images and uploads them to the GitHub Container "
+                    "Registry. Any server can then download and start them without building "
+                    "them itself.",
                     "If asked: release runs in parallel with CI and tags only latest. "
                     "Gating it on CI and tagging by commit is the next step.",
-                    "If asked about details, the full CI setup was built by the team; "
-                    "the workflow files are linked below.",
                 ],
             },
             {
@@ -733,62 +734,59 @@ SECTIONS = [
                 "figure": None,
                 "lanes": [
                     {
-                        "name": "Prometheus scrapes every 15 sec",
-                        "steps": ["API endpoints", "/metrics", "Prometheus", "Grafana"],
+                        "name": "Live, every 15 s",
+                        "steps": ["API", "/metrics", "Prometheus", "Grafana"],
                     },
                     {
-                        "name": "On drift alert",
-                        "steps": ["Alert", "Webhook", "Airflow", "New model"],
+                        "name": "Daily, once the real weather is known",
+                        "steps": ["Evidently", "Pushgateway", "Recall alert", "weather_retrain"],
                     },
                 ],
                 "points": [
-                    "Live predictions and training report model metrics",
-                    "Drift proxy via alert based on the rain prediction distribution",
-                    "If the alert is firing -> DAG run via Grafana Webhook",
+                    "The API reports traffic, errors, latency and every prediction.",
+                    "Evidently checks drift and the real recall once a day.",
+                    "Retraining starts only when the real recall drops, at most once a day.",
                 ],
                 "facts": [
                     ["Scrape interval", "15 s"],
                     ["Dashboards", "2"],
-                    ["Alerts", "6 (3 API, 3 model)"],
+                    ["Alerts", "7 (3 API, 4 model)"],
                     ["Max retraining", "1/day"],
                 ],
                 "links": [
-                    ["Metrics", "src/weather_mlops/api/metrics.py"],
-                    ["Prometheus", "docker/prometheus/"],
+                    ["API metrics", "src/weather_mlops/api/metrics.py"],
+                    ["Evidently job", "src/weather_mlops/monitoring/drift.py"],
                     ["Grafana", "docker/grafana/"],
                 ],
                 "notes": [
                     "About 1.5 minutes. Then hand over to Ziad.",
-                    "The API measures itself. A library counts every request by endpoint, "
-                    "method and status, and times it.",
-                    "On top come our own model metrics. Live predictions record the "
-                    "station, rain or no rain, the probability and the model that answered. "
-                    "Train records how often and how long we train, and the validation "
-                    "metrics.",
-                    "All of it is exposed on /metrics. Nginx blocks it from outside, "
-                    "Prometheus reads it inside the Docker network every 15 seconds and "
-                    "keeps the history.",
-                    "Grafana shows two dashboards: Weather API for requests, errors and "
-                    "latency, Weather model for rain rate, probabilities, active model and "
-                    "performance.",
-                    "Everything in Grafana is code in docker/grafana: data source, "
-                    "dashboards and alerts. After git pull and make monitoring everyone has "
-                    "the same setup.",
-                    "Six alerts. API: down, more than 10 percent server errors, average "
-                    "latency above 5 seconds. Model: ROC-AUC below 0.866, recall below "
-                    "0.75, unusual rain rate.",
-                    "Performance alerts go to a person, not to retraining: retraining on "
-                    "the same data would produce the same model.",
-                    "The rain-rate alert is our drift signal: if under 5 or over 60 percent "
-                    "of the last 24 hours' predictions say rain, with at least 20 "
-                    "predictions, Grafana calls Airflow through a webhook, at most once a "
-                    "day.",
-                    "This is a proxy. Real drift detection compares the input "
-                    "data with the training data; that is the Evidently part.",
-                    "For now alerts are only visible in Grafana, no Slack, to avoid noise "
-                    "while we test.",
-                    "If asked about latency: the library's default buckets stop at 1 "
-                    "second, so we alert on average latency instead of the 95th percentile.",
+                    "Two kinds of monitoring: live from the API, and a daily batch check.",
+                    "Live: the API measures itself. Every request is counted by endpoint and "
+                    "status and is timed. On top, live predictions record station, rain or no "
+                    "rain, probability and the model that answered; training records the "
+                    "validation metrics.",
+                    "All of it is on /metrics. Nginx blocks it from outside, Prometheus "
+                    "reads it inside the Docker network every 15 seconds.",
+                    "Once a day, when the real weather is known, an Evidently job runs two checks.",
+                    "First, it checks whether the inputs have changed compared to the "
+                    "training data. We call this feature drift. It only raises a warning, "
+                    "because changed inputs do not prove the model got worse.",
+                    "Second, it checks whether the model was actually right. As soon as at "
+                    "least 30 predictions have a known outcome, it computes the real recall. "
+                    "If recall is below 0.75, it requests a retrain.",
+                    "Evidently is a batch job that ends after a few seconds, so Prometheus "
+                    "cannot scrape it. It pushes its numbers to a Pushgateway instead, and "
+                    "Prometheus reads them from there.",
+                    "Grafana turns the retrain request into an alert and calls Airflow "
+                    "through a webhook, at most once a day. That starts weather_retrain.",
+                    "Seven alerts. API: down, more than 10 percent server errors, average "
+                    "latency above 5 seconds. Model: retrain request, last training below "
+                    "ROC-AUC 0.866 or recall 0.75, and an unusual rain rate.",
+                    "Only the retrain request starts training. The others are warnings for "
+                    "a person, for now visible in Grafana only.",
+                    "Our dashboards and alerts are not clicked together by hand. "
+                    "They are stored as files in Git, so anyone on the team can rebuild "
+                    "the same monitoring with one command. ",
                 ],
             },
         ],
