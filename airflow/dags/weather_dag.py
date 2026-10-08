@@ -15,12 +15,13 @@ with DAG(
     tags=["docker", "weather_ingestion"],
     default_args={
         "owner": "airflow",
-        "start_date": datetime(2026, 9, 1, tzinfo=local_tz),
+        "start_date": datetime(2026, 9, 24, tzinfo=local_tz),
         "retries": 3,
         "retry_delay": timedelta(minutes=1),
     },
     schedule_interval="0 18 * * *",
-    catchup=False,
+    catchup=True,
+    max_active_runs=1,
 ) as dag:
     ingestion = DockerOperator(
         task_id="ingestion",
@@ -30,6 +31,9 @@ with DAG(
         network_mode="jul26_bmlops_int_weather_weather_network",
         auto_remove=True,
         mount_tmp_dir=False,
+        environment={
+            "OPEN_METEO_DATE": "{{ macros.ds_add(data_interval_start | ds, -1) }}",
+        },
     )
     preprocessing = DockerOperator(
         task_id="preprocess",
