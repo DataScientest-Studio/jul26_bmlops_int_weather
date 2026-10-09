@@ -10,6 +10,18 @@ import pandas as pd
 from weather_mlops.config.settings import settings
 
 
+def load_unlabelled_predictions(client: Any) -> pd.DataFrame:
+    """Return date and station of every prediction that has no outcome yet"""
+
+    response = (
+        client.table(settings.supabase_predictions_table)
+        .select("observation_date,location")
+        .is_("observed_label", "null")
+        .execute()
+    )
+    return pd.DataFrame(response.data, columns=["observation_date", "location"])
+
+
 def reconcile_prediction_outcomes(rows: pd.DataFrame, client: Any) -> int:
     """Fill only empty labels for WeatherAUS-compatible rows with a known outcome."""
 
@@ -17,8 +29,17 @@ def reconcile_prediction_outcomes(rows: pd.DataFrame, client: Any) -> int:
     if not required.issubset(rows.columns):
         raise ValueError(f"Outcome rows must contain {sorted(required)}")
 
+    known = rows.loc[rows["RainTomorrow"].isin(["Yes", "No"])].copy()
+    pending = load_unlabelled_predictions(client)
+    known["Date"] = known["Date"].astype(str)
+    pending["observation_date"] = pending["observation_date"].astype(str)
+    matches = pending.merge(
+        known, left_on=["observation_date", "location"], right_on=["Date", "Location"]
+    )
+    matches = matches.drop_duplicates(subset=["Date", "Location"])
+
     updated = 0
-    for row in rows.loc[rows["RainTomorrow"].isin(["Yes", "No"])].itertuples(index=False):
+    for row in matches.itertuples(index=False):
         payload = row._asdict()
         (
             client.table(settings.supabase_predictions_table)

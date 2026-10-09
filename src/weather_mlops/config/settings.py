@@ -81,6 +81,8 @@ class Settings(BaseSettings):
     # MLflow. Unset = skip tracking. Compose sets http://mlflow:8080 on the API.
     mlflow_tracking_uri: str | None = None
     mlflow_experiment_name: str = "weather-rainfall-classifier"
+    # Evidently batches get their own experiment so they never look like training runs.
+    mlflow_monitoring_experiment_name: str = "weather-monitoring"
     mlflow_model_name: str = "weather-rainfall-classifier"
     mlflow_primary_metric: str = "validation_roc_auc"
     mlflow_recall_metric: str = "validation_recall"

@@ -212,6 +212,80 @@
     border-bottom: 5px solid transparent;
 }
 
+/* Whole system: six zones, the tools in each, then the closed loop below. */
+.zones {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.2rem;
+    margin: -0.8rem 0 2.4rem;
+}
+
+.zone {
+    background: #FFFFFF;
+    border: 1px solid var(--line);
+    border-top: 3px solid var(--eucalyptus);
+    padding: 1.1rem 1.2rem;
+}
+
+.zone-name {
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    margin: 0 0 0.4rem;
+}
+
+.zone-tools {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem 0.9rem;
+    list-style: none;
+    margin: 0 0 0.4rem;
+    padding: 0;
+    font-size: clamp(1.1rem, 1.6vw, 1.4rem);
+    font-weight: 600;
+}
+
+.zone-tools li {
+    margin: 0;
+}
+
+.tool-dot {
+    display: inline-block;
+    width: 0.65rem;
+    height: 0.65rem;
+    border-radius: 50%;
+    margin-right: 0.4rem;
+}
+
+.zone-points {
+    margin: 0;
+    padding-left: 1.1rem;
+    font-size: clamp(0.9rem, 1.15vw, 1.05rem);
+    line-height: 1.35;
+    color: var(--ink);
+}
+
+.zone-points li {
+    margin: 0 0 0.15rem;
+}
+
+.layout-system .lanes {
+    margin-bottom: 1rem;
+}
+
+.layout-system .lane-steps li {
+    padding: 0.5rem 0.8rem;
+    font-size: clamp(0.85rem, 1.1vw, 1rem);
+}
+
+.system-caption {
+    font-size: 0.85rem;
+    color: var(--muted);
+    margin: 0;
+}
+
 /* Architecture: each lane runs on into the registry, with what it does there. */
 .arch .lane-steps::after {
     flex: 1;
