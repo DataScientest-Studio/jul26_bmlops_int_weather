@@ -4,11 +4,13 @@ from weather_mlops.demo.observability import (
     ApiTelemetry,
     ModelTelemetry,
     load_api_telemetry,
+    load_dag_run_state,
     load_model_telemetry,
     load_task_states,
     request_simulated_drift,
     scalar_or_none,
     scalar_result,
+    trigger_dag_run,
 )
 
 
@@ -93,6 +95,7 @@ def test_load_task_states_reads_the_latest_run() -> None:
     assert [task.task_id for task in PIPELINE_TASKS] == [
         "ingestion",
         "preprocess",
+        "register_dataset",
         "reconcile_outcomes",
         "evidently_monitor",
     ]
@@ -122,3 +125,87 @@ def test_request_simulated_drift_posts_to_the_api() -> None:
 
     assert body == {"retrain": True}
     assert calls == [("https://nginx/monitor/simulate", ("weather", "secret"), False)]
+
+
+def test_load_task_states_can_pin_the_selected_run() -> None:
+    calls = []
+
+    class Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {"task_instances": [{"task_id": "ingestion", "state": "running"}]}
+
+    def fake_get(url: str, **kwargs) -> Response:
+        calls.append((url, kwargs))
+        return Response()
+
+    states = load_task_states(
+        "http://airflow-webserver:8080",
+        "weather_pipeline",
+        run_id="manual__refresh",
+        get=fake_get,
+    )
+
+    assert states == {"ingestion": "running"}
+    assert calls == [
+        (
+            "http://airflow-webserver:8080/api/v1/dags/weather_pipeline/"
+            "dagRuns/manual__refresh/taskInstances",
+            {"auth": None, "timeout": 3},
+        )
+    ]
+
+
+def test_trigger_dag_run_records_a_demo_purpose_and_returns_its_id() -> None:
+    calls = []
+
+    class Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {"dag_run_id": "manual__refresh"}
+
+    def fake_post(url: str, **kwargs) -> Response:
+        calls.append((url, kwargs))
+        return Response()
+
+    run_id = trigger_dag_run(
+        "http://airflow-webserver:8080",
+        "weather_pipeline",
+        conf={"purpose": "prepared-data-refresh"},
+        auth=("admin", "secret"),
+        post=fake_post,
+    )
+
+    assert run_id == "manual__refresh"
+    assert calls == [
+        (
+            "http://airflow-webserver:8080/api/v1/dags/weather_pipeline/dagRuns",
+            {
+                "json": {"conf": {"purpose": "prepared-data-refresh"}},
+                "auth": ("admin", "secret"),
+                "timeout": 10,
+            },
+        )
+    ]
+
+
+def test_load_dag_run_state_reads_the_selected_run() -> None:
+    class Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {"state": "success"}
+
+    state = load_dag_run_state(
+        "http://airflow-webserver:8080",
+        "weather_pipeline",
+        "manual__refresh",
+        get=lambda *args, **kwargs: Response(),
+    )
+
+    assert state == "success"

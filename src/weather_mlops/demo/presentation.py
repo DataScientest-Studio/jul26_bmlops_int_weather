@@ -837,43 +837,86 @@ SECTIONS = [
             },
             {
                 "id": "next-steps",
-                "title": "Next steps: from laptop to production",
-                "layout": "script",
+                "title": "Future work",
+                "layout": "future",
                 "stages": [],
                 "figure": None,
                 "lanes": [],
-                "points": [
-                    "Cloud hosting with Kubernetes: API replicas that restart on failure.",
-                    "Canary release: Nginx sends 10% of traffic to the new model first.",
-                    "Decision threshold tuned on validation to reach recall 0.75.",
-                    "Tomorrow's Open-Meteo forecast as new model features.",
-                    "Paid API: one key per client, Stripe billing per call.",
+                "points": [],
+                "cards": [
+                    {
+                        "icon": "kubernetes",
+                        "title": "Scale on Kubernetes",
+                        "text": "API replicas that restart on failure and grow when traffic grows.",
+                    },
+                    {
+                        "icon": "models",
+                        "title": "Jev and transformers",
+                        "text": (
+                            "Past XGBoost: Jev, a System One classifier, "
+                            "and transformer forecasters."
+                        ),
+                    },
+                    {
+                        "icon": "canary",
+                        "title": "Canary release",
+                        "text": (
+                            "Ten percent of live traffic tries the new model. "
+                            "Keep it only if recall holds."
+                        ),
+                    },
+                    {
+                        "icon": "forecast",
+                        "title": "Tomorrow's forecast",
+                        "text": (
+                            "Add Open-Meteo's forecast for tomorrow. The model now sees only today."
+                        ),
+                    },
+                    {
+                        "icon": "threshold",
+                        "title": "Tuned cut-off",
+                        "text": "Set the decision threshold on validation so recall reaches 0.75.",
+                    },
+                    {
+                        "icon": "rollback",
+                        "title": "Shadow, then rollback",
+                        "text": (
+                            "Score the candidate beside the champion. "
+                            "Point the alias back if recall drops."
+                        ),
+                    },
                 ],
                 "links": [],
                 # elements lit on the slide while each note is read
                 "focus": [
                     ["title"],
-                    ["point-0"],
-                    ["point-1"],
-                    ["point-2"],
-                    ["point-3"],
-                    ["point-4"],
+                    ["card-0"],
+                    ["card-1"],
+                    ["card-2"],
+                    ["card-3"],
+                    ["card-4"],
+                    ["card-5"],
                     [],
                 ],
                 "notes": [
-                    "[TITLE] Before your questions, five next steps.",
-                    "[1. KUBERNETES] One: leave the laptop. We host the system in the cloud, "
-                    "for example on AWS, with Kubernetes running several API replicas.",
-                    "[2. CANARY] Two: a canary release. Nginx sends ten percent of real "
+                    "[TITLE] Before your questions, where this system goes next.",
+                    "[1. KUBERNETES] One: leave the laptop. Kubernetes runs several copies of "
+                    "the API. A failed copy restarts, and we add copies when traffic grows.",
+                    "[2. JEV AND TRANSFORMERS] Two: what we serve today is XGBoost on today's "
+                    "weather. Next we would try Jev, a System One model: it classifies into "
+                    "a fixed set of answers and returns a calibrated probability. Alongside "
+                    "that, transformer models that read weather as a sequence.",
+                    "[3. CANARY] Three: a canary release. Nginx sends ten percent of real "
                     "traffic to the new champion first, and we keep it only if its real "
                     "recall holds.",
-                    "[3. THRESHOLD] Three: today we cut at zero point five. We would tune the "
-                    "threshold on validation to reach recall zero point seven five.",
                     "[4. FORECAST FEATURES] Four: our model only sees today's weather. "
                     "Open-Meteo also forecasts tomorrow; adding that forecast as features "
-                    "should be our biggest gain.",
-                    "[5. PAID API] Five: one API key per client, and Stripe billing per "
-                    "prediction call.",
+                    "should be our biggest gain on the model we have now.",
+                    "[5. THRESHOLD] Five: today we cut at zero point five. We would tune the "
+                    "threshold on validation to reach recall zero point seven five.",
+                    "[6. SHADOW AND ROLLBACK] Six: score the candidate in shadow, next to the "
+                    "champion. If live recall drops, point the champion alias back at the "
+                    "previous version. The API picks it up on the next prediction.",
                     "[NEXT: QUESTIONS] Thank you. We are happy to take your questions.",
                 ],
             },

@@ -1,5 +1,8 @@
 """build the html of each slide of the defense deck."""
 
+import base64
+from pathlib import Path
+
 from weather_mlops.demo.presentation import (
     CUTOFFS,
     METRICS,
@@ -259,6 +262,59 @@ def make_roc(slide):
     )
 
 
+IMAGE_DIR = Path(__file__).with_name("images")
+
+# Photographs and official marks. Credits stay with the files:
+# kubernetes.svg is the CNCF Kubernetes icon.
+# jev.png is the TypeSafe mark from typesafe.ai.
+# canary.jpg, forecast.jpg and shadow.jpg are Wikimedia Commons, CC0.
+# threshold.jpg is Wikimedia Commons, File:Pressure Gauge.jpg,
+# by In Transit, CC BY-SA 4.0.
+CARD_IMAGES = {
+    "kubernetes": ("kubernetes.svg", "Kubernetes", "logo", "center"),
+    "models": ("jev.png", "Jev", "logo", "center"),
+    "canary": ("canary.jpg", "Canary", "photo", "center"),
+    "forecast": ("forecast.jpg", "Clouds", "photo", "center 28%"),
+    "threshold": ("threshold.jpg", "Pressure gauge", "photo", "center 32%"),
+    "rollback": ("shadow.jpg", "Shadows on a pavement", "photo", "center 70%"),
+}
+
+
+def card_image(key):
+    filename, alt, kind, position = CARD_IMAGES[key]
+    path = IMAGE_DIR / filename
+    if path.suffix == ".svg":
+        mime = "image/svg+xml"
+    elif path.suffix == ".png":
+        mime = "image/png"
+    else:
+        mime = "image/jpeg"
+    encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+    return (
+        f'<img class="future-photo is-{kind}" alt="{alt}" '
+        f'style="object-position: {position}" '
+        f'src="data:{mime};base64,{encoded}">'
+    )
+
+
+def make_future(slide):
+    cards = ""
+    for number, card in enumerate(slide["cards"]):
+        image = card_image(card["icon"])
+        cards = cards + (
+            f'<article class="future-card" data-focus="card-{number}">'
+            f"{image}"
+            f'<p class="future-name">{card["title"]}</p>'
+            f'<p class="future-text">{card["text"]}</p>'
+            "</article>"
+        )
+    credit = (
+        '<p class="future-credit">Gauge photograph by In Transit, CC BY-SA 4.0. '
+        "Other photographs, Wikimedia Commons, CC0.</p>"
+    )
+    return make_title(slide) + f'<div class="future-grid">{cards}</div>' + credit
+
+
 def make_closing(slide):
     return (
         '<div class="cover">'
@@ -284,6 +340,8 @@ def make_body(slide):
         return make_metrics(slide)
     elif layout == "script":
         return make_title(slide) + make_points(slide, tag="ol")
+    elif layout == "future":
+        return make_future(slide)
     elif layout == "closing":
         return make_closing(slide)
     elif layout == "roc":

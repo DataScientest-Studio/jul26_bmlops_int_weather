@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from html import escape
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -13,10 +14,12 @@ from weather_mlops.api.http import tls_verify
 from weather_mlops.config.settings import settings
 from weather_mlops.demo.deck import render_slide, slide_label
 from weather_mlops.demo.observability import (
+    PIPELINE_TASKS,
     RETRAIN_TASKS,
     DagTask,
+    load_dag_run_state,
     load_task_states,
-    request_simulated_drift,
+    trigger_dag_run,
 )
 from weather_mlops.demo.presentation import all_slides
 from weather_mlops.demo.slides import SLIDES
@@ -76,6 +79,7 @@ GRAFANA_API_URL = os.environ.get(
 GRAFANA_MODEL_URL = os.environ.get(
     "GRAFANA_MODEL_URL", "http://127.0.0.1:3000/d/weather-model/weather-model"
 )
+MLFLOW_URL = os.environ.get("MLFLOW_URL", "http://127.0.0.1:8082")
 GRAFANA_EMBED_ENABLED = os.environ.get("GRAFANA_EMBED_ENABLED", "true").lower() == "true"
 AIRFLOW_URL = os.environ.get("AIRFLOW_URL", "http://127.0.0.1:8081/dags/weather_retrain/grid")
 AIRFLOW_API_URL = os.environ.get("AIRFLOW_API_URL", "http://airflow-webserver:8080")
@@ -209,96 +213,180 @@ def _render_live_activity() -> None:
     _render_grafana_panels(GRAFANA_API_URL, (1, 2, 3))
 
 
-def _render_drift(api_url: str) -> None:
-    """Run the real Evidently simulation, then show its observed consequences."""
-
-    st.markdown(
-        '<p class="lede">Feature drift warns. A simulated recall failure is what asks '
-        "Grafana to start retraining.</p>",
-        unsafe_allow_html=True,
-    )
-    if st.button("Simulate drift", type="primary", use_container_width=True):
-        try:
-            with st.spinner("Running Evidently on a synthetic batch"):
-                st.session_state.drift_demo = request_simulated_drift(
-                    api_url,
-                    auth=API_AUTH if all(API_AUTH) else None,
-                    verify=tls_verify(api_url),
-                )
-        except requests.RequestException as exc:
-            st.error("The drift check did not finish.")
-            st.caption(str(exc))
-
-    result = st.session_state.get("drift_demo")
-    if result:
-        columns = ", ".join(result.get("drifted_columns") or []) or "none"
-        detected = "Drift detected" if result.get("drift_detected") else "No feature drift"
-        st.markdown(
-            f'<section class="health-result"><strong>{detected}</strong>'
-            f"<span>Changed features: {columns}.</span></section>",
-            unsafe_allow_html=True,
-        )
-        if result.get("push_error"):
-            st.warning("Prometheus did not accept the simulated report.")
-            st.caption(str(result["push_error"]))
-        elif result.get("retrain"):
-            st.caption(
-                "The quality gate requested retraining. Grafana and Airflow update on their own "
-                "schedules; the champion remains unchanged until a candidate is compared."
-            )
-        else:
-            st.caption("The quality gate is clear, so no retraining was requested.")
-    else:
-        st.caption(
-            "The button shifts humidity and location, then evaluates the real Evidently gate."
-        )
-
-    st.markdown("<h2>Monitoring evidence</h2>", unsafe_allow_html=True)
-    st.caption(
-        "The three live Grafana panels track report freshness, detected features, and the gate."
-    )
-    _render_grafana_panels(GRAFANA_MODEL_URL, (9, 10, 14))
-    if result:
-        st.markdown("<h2>Airflow, if the gate starts retraining</h2>", unsafe_allow_html=True)
-        _render_airflow()
-
-
 def _dag_markup(tasks: tuple[DagTask, ...], states: dict[str, str]) -> str:
-    nodes = []
-    for task in tasks:
-        css = _TASK_STATE_CLASS.get(states.get(task.task_id, ""), "")
-        class_name = f"node {css}".strip()
-        nodes.append(f'<div class="{class_name}">{task.label}</div>')
-    return f'<div class="pipe">{"".join(nodes)}</div>'
+    """Draw the ordered Airflow tasks as a connected, status-coloured DAG."""
+
+    flow = []
+    for index, task in enumerate(tasks):
+        state = states.get(task.task_id, "")
+        css = _TASK_STATE_CLASS.get(state, "pending")
+        flow.append(
+            '<div class="dag__node '
+            f'{css}"><span class="dag__marker">{index + 1:02d}</span>'
+            f'<span class="dag__label">{escape(task.label)}</span></div>'
+        )
+        if index < len(tasks) - 1:
+            flow.append(f'<span class="dag__edge {css}" aria-hidden="true"></span>')
+    return f'<div class="dag" role="img" aria-label="Airflow task graph">{"".join(flow)}</div>'
 
 
-def _task_states(dag_id: str) -> dict[str, str]:
+def _task_states(dag_id: str, run_id: str | None = None) -> dict[str, str]:
     if not all(AIRFLOW_AUTH):
         return {}
-    return load_task_states(AIRFLOW_API_URL, dag_id, auth=AIRFLOW_AUTH)
+    return load_task_states(AIRFLOW_API_URL, dag_id, run_id=run_id, auth=AIRFLOW_AUTH)
+
+
+def _run_state(dag_id: str, run_id: str) -> str | None:
+    if not all(AIRFLOW_AUTH):
+        return None
+    return load_dag_run_state(AIRFLOW_API_URL, dag_id, run_id, auth=AIRFLOW_AUTH)
+
+
+def _trigger_dag(
+    dag_id: str,
+    session_key: str,
+    *,
+    conf: dict[str, str],
+) -> None:
+    """Start a named Airflow run and keep its id stable while the UI refreshes."""
+
+    try:
+        with st.spinner("Starting the Airflow run"):
+            st.session_state[session_key] = trigger_dag_run(
+                AIRFLOW_API_URL,
+                dag_id,
+                conf=conf,
+                auth=AIRFLOW_AUTH,
+            )
+    except requests.RequestException as exc:
+        st.error("Airflow did not accept the requested run.")
+        st.caption(str(exc))
 
 
 @st.fragment(run_every=15)
-def _render_airflow() -> None:
-    """Draw only the retraining DAG, colored from the latest Airflow run when available."""
+def _render_airflow(
+    dag_id: str,
+    tasks: tuple[DagTask, ...],
+    run_id: str | None,
+) -> None:
+    """Show one chosen Airflow run so scheduled runs cannot replace the demo state."""
 
-    retrain_states: dict[str, str] = {}
+    task_states: dict[str, str] = {}
     airflow_error = None
+    run_state = None
     try:
-        retrain_states = _task_states("weather_retrain")
-    except requests.RequestException as exc:
+        if run_id:
+            run_state = _run_state(dag_id, run_id)
+            task_states = _task_states(dag_id, run_id)
+    except (requests.RequestException, ValueError) as exc:
         airflow_error = str(exc)
 
-    st.markdown(_dag_markup(RETRAIN_TASKS, retrain_states), unsafe_allow_html=True)
+    st.markdown(_dag_markup(tasks, task_states), unsafe_allow_html=True)
     if airflow_error:
         st.caption("Airflow is not reachable from this app yet. The graph is the task order.")
         st.caption(airflow_error)
     elif not all(AIRFLOW_AUTH):
         st.caption("Airflow credentials are not in this app, so the boxes stay uncolored.")
+    elif not run_id:
+        st.caption("Start this workflow to see its individual task states here.")
     else:
         st.caption(
-            "Teal is success, gold is running, coral is failed. This refreshes every 15 seconds."
+            f"Airflow run {run_id} is {run_state}. Teal is success, gold is running, "
+            "coral is failed. This refreshes every 15 seconds."
         )
+
+
+def _render_model_health() -> None:
+    """Present the real data lineage, monitoring evidence, and guarded candidate lifecycle."""
+
+    st.markdown(
+        '<p class="lede">Refresh the prepared weather batch, preserve its immutable dataset '
+        "version, inspect drift evidence, then train a candidate only when you choose to.</p>",
+        unsafe_allow_html=True,
+    )
+    configured = all(AIRFLOW_AUTH)
+    if not configured:
+        st.warning("Restart `make streamlit` so Airflow credentials are hydrated from Vault.")
+
+    st.markdown("<h2>1. Refresh and version the data</h2>", unsafe_allow_html=True)
+    st.caption(
+        "Airflow ingests and merges the prepared batch, preprocesses the splits, uploads immutable "
+        "raw and processed snapshots to Supabase Storage, and records their hashes in "
+        "dataset_versions."
+    )
+    if st.button(
+        "Refresh prepared data",
+        type="primary",
+        use_container_width=True,
+        disabled=not configured,
+    ):
+        _trigger_dag(
+            "weather_pipeline",
+            "pipeline_run_id",
+            conf={"triggered_by": "streamlit-demo", "purpose": "prepared-data-refresh"},
+        )
+        st.session_state.pop("retrain_run_id", None)
+    pipeline_run_id = st.session_state.get("pipeline_run_id")
+    _render_airflow("weather_pipeline", PIPELINE_TASKS, pipeline_run_id)
+
+    st.markdown("<h2>2. Inspect live model-health evidence</h2>", unsafe_allow_html=True)
+    st.caption(
+        "These real Grafana trends show Evidently's drift share, delayed-outcome quality, and "
+        "whether the performance gate has requested retraining."
+    )
+    _render_grafana_panels(GRAFANA_MODEL_URL, (15, 16, 14), height=250)
+
+    st.markdown("<h2>3. Train and compare a candidate</h2>", unsafe_allow_html=True)
+    pipeline_state = None
+    if pipeline_run_id and configured:
+        try:
+            pipeline_state = _run_state("weather_pipeline", pipeline_run_id)
+        except (requests.RequestException, ValueError) as exc:
+            st.caption(f"Unable to confirm the data-refresh state: {exc}")
+    refresh_is_running = pipeline_state in {"queued", "running", "scheduled"}
+    can_retrain = configured
+    if pipeline_state == "success":
+        st.caption(
+            "This candidate will use the dataset version created by the completed refresh above."
+        )
+    elif refresh_is_running:
+        st.caption(
+            "The data refresh is still running. You can train now on the last completed "
+            "registered version, or wait to use the refreshed version."
+        )
+    elif not pipeline_run_id:
+        st.caption(
+            "No refresh is selected, so this runs deliberately on the latest registered dataset "
+            "version. No-drift runs do not block a manual retrain."
+        )
+    else:
+        st.caption(
+            "The selected refresh did not complete. A manual retrain uses the latest registered "
+            "dataset version instead."
+        )
+    if st.button(
+        "Train candidate and compare",
+        use_container_width=True,
+        disabled=not can_retrain,
+    ):
+        _trigger_dag(
+            "weather_retrain",
+            "retrain_run_id",
+            conf={
+                "triggered_by": "streamlit-demo",
+                "source_pipeline_run_id": str(pipeline_run_id or "latest_registered"),
+            },
+        )
+    _render_airflow("weather_retrain", RETRAIN_TASKS, st.session_state.get("retrain_run_id"))
+    st.caption(
+        "Training logs the candidate run and model in MLflow. Compare evaluates the same immutable "
+        "dataset version and promotes it only when the validation guards beat the champion."
+    )
+    st.caption(
+        "Automatic retraining remains separate: Grafana only calls Airflow after delayed "
+        "performance fails its gate, not from feature drift alone."
+    )
+    st.link_button("Open MLflow model registry", MLFLOW_URL, use_container_width=True)
 
 
 def _show_prediction(response: requests.Response) -> None:
@@ -390,9 +478,6 @@ def _render_presentation():
     _live_position()["index"] = index
     _live_position()["cue"] = cue
     st.markdown(render_slide(index, cue), unsafe_allow_html=True)
-    section, slide = slides[index]
-    if slide["id"] == "demo":
-        _render_live(DEFAULT_API_URL.rstrip("/"))
 
     col1, col2, col3 = st.columns([1, 4, 1], vertical_alignment="center")
     col1.button("Previous", on_click=_step_deck, args=(-1,), disabled=index == 0)
@@ -466,7 +551,7 @@ def _render_demo() -> None:
         st.markdown(f"<h1>{slide.title}</h1>", unsafe_allow_html=True)
 
     if slide.id == "health":
-        _render_drift(DEFAULT_API_URL.rstrip("/"))
+        _render_model_health()
     elif slide.id == "live":
         _render_live(DEFAULT_API_URL.rstrip("/"))
     else:

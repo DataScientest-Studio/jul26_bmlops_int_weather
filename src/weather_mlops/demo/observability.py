@@ -67,6 +67,7 @@ class DagTask:
 PIPELINE_TASKS = (
     DagTask("ingestion", "Ingest"),
     DagTask("preprocess", "Preprocess"),
+    DagTask("register_dataset", "Version + persist"),
     DagTask("reconcile_outcomes", "Label outcomes"),
     DagTask("evidently_monitor", "Evidently"),
 )
@@ -164,24 +165,26 @@ def load_task_states(
     airflow_url: str,
     dag_id: str,
     *,
+    run_id: str | None = None,
     auth: tuple[str, str] | None = None,
     get: Any = requests.get,
     timeout: float = 3,
 ) -> dict[str, str]:
-    """Map task id to the state of the latest DAG run. Empty when Airflow has no run."""
+    """Map task id to an Airflow run state, using the latest run when none is specified."""
 
     base_url = airflow_url.rstrip("/")
-    runs = get(
-        f"{base_url}/api/v1/dags/{dag_id}/dagRuns",
-        params={"limit": 1, "order_by": "-start_date"},
-        auth=auth,
-        timeout=timeout,
-    )
-    runs.raise_for_status()
-    dag_runs = runs.json().get("dag_runs") or []
-    if not dag_runs:
-        return {}
-    run_id = dag_runs[0]["dag_run_id"]
+    if run_id is None:
+        runs = get(
+            f"{base_url}/api/v1/dags/{dag_id}/dagRuns",
+            params={"limit": 1, "order_by": "-start_date"},
+            auth=auth,
+            timeout=timeout,
+        )
+        runs.raise_for_status()
+        dag_runs = runs.json().get("dag_runs") or []
+        if not dag_runs:
+            return {}
+        run_id = str(dag_runs[0]["dag_run_id"])
     tasks = get(
         f"{base_url}/api/v1/dags/{dag_id}/dagRuns/{run_id}/taskInstances",
         auth=auth,
@@ -192,6 +195,53 @@ def load_task_states(
         item["task_id"]: str(item.get("state") or "none")
         for item in tasks.json().get("task_instances") or []
     }
+
+
+def load_dag_run_state(
+    airflow_url: str,
+    dag_id: str,
+    run_id: str,
+    *,
+    auth: tuple[str, str] | None = None,
+    get: Any = requests.get,
+    timeout: float = 3,
+) -> str:
+    """Read the exact manually-triggered Airflow run, never a later scheduled run."""
+
+    response = get(
+        f"{airflow_url.rstrip('/')}/api/v1/dags/{dag_id}/dagRuns/{run_id}",
+        auth=auth,
+        timeout=timeout,
+    )
+    response.raise_for_status()
+    state = response.json().get("state")
+    if not state:
+        raise ValueError("Airflow returned a DAG run without a state.")
+    return str(state)
+
+
+def trigger_dag_run(
+    airflow_url: str,
+    dag_id: str,
+    *,
+    conf: dict[str, Any] | None = None,
+    auth: tuple[str, str] | None = None,
+    post: Any = requests.post,
+    timeout: float = 10,
+) -> str:
+    """Create an Airflow DAG run and return its immutable run identifier."""
+
+    response = post(
+        f"{airflow_url.rstrip('/')}/api/v1/dags/{dag_id}/dagRuns",
+        json={"conf": conf or {}},
+        auth=auth,
+        timeout=timeout,
+    )
+    response.raise_for_status()
+    run_id = response.json().get("dag_run_id")
+    if not run_id:
+        raise ValueError("Airflow accepted the trigger without returning a DAG run id.")
+    return str(run_id)
 
 
 def request_simulated_drift(

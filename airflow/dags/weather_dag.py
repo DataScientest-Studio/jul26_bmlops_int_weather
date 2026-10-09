@@ -44,6 +44,25 @@ with DAG(
         auto_remove=True,
         mount_tmp_dir=False,
     )
+    register_dataset = DockerOperator(
+        task_id="register_dataset",
+        image="weather-api:latest",
+        mounts=[
+            Mount(source=path + "/data", target="/app/data", type="bind", read_only=True),
+        ],
+        docker_url="tcp://docker-socket-proxy:2375",
+        network_mode="jul26_bmlops_int_weather_weather_network",
+        auto_remove=True,
+        command=(
+            "python3 scripts/register_dataset_version.py --kind all "
+            "--created-by airflow --source open-meteo"
+        ),
+        environment={
+            "SUPABASE_URL": os.environ.get("SUPABASE_URL"),
+            "SUPABASE_KEY": os.environ.get("SUPABASE_KEY"),
+        },
+        mount_tmp_dir=False,
+    )
     reconcile_outcomes = DockerOperator(
         task_id="reconcile_outcomes",
         image="weather-api:latest",
@@ -80,7 +99,7 @@ with DAG(
         },
         mount_tmp_dir=False,
     )
-    ingestion >> preprocessing >> reconcile_outcomes >> evidently_monitor
+    ingestion >> preprocessing >> register_dataset >> reconcile_outcomes >> evidently_monitor
 
 with DAG(
     dag_id="weather_retrain",

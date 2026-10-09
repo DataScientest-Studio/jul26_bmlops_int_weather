@@ -47,34 +47,107 @@ h2 {
     color: #B7C4CC;
 }
 
-.pipe {
+.dag {
     display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    margin: 0 0 1.4rem;
+    align-items: flex-start;
+    gap: 0;
+    overflow-x: auto;
+    margin: 0.85rem 0 1.3rem;
+    padding: 1rem 1.1rem 0.85rem;
+    border: 1px solid #1D3445;
+    border-radius: 0.65rem;
+    background: linear-gradient(120deg, #091923, #0C202C);
 }
 
-.node {
+.dag__node {
+    display: grid;
+    justify-items: center;
+    gap: 0.45rem;
+    min-width: 6.4rem;
+    text-align: center;
     font-family: "IBM Plex Sans", sans-serif;
-    background: #123044;
-    border-left: 4px solid #35566A;
-    padding: 0.85rem 1rem;
-    min-width: 7rem;
 }
 
-.node.success {
+.dag__marker {
+    display: grid;
+    width: 2.8rem;
+    height: 2.8rem;
+    place-items: center;
+    border: 2px solid #35566A;
+    border-radius: 50%;
+    background: #123044;
+    color: #B7C4CC;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.74rem;
+    font-weight: 500;
+}
+
+.dag__label {
+    min-height: 2.4em;
+    color: #D8E3E8;
+    font-size: 0.82rem;
+    line-height: 1.2;
+}
+
+.dag__edge {
+    position: relative;
+    flex: 1 0 1.4rem;
+    min-width: 1.4rem;
+    height: 2px;
+    margin: 1.35rem -0.05rem 0;
+    background: #35566A;
+}
+
+.dag__edge::after {
+    position: absolute;
+    top: 50%;
+    right: -0.05rem;
+    width: 0;
+    height: 0;
+    border-top: 0.28rem solid transparent;
+    border-bottom: 0.28rem solid transparent;
+    border-left: 0.42rem solid #35566A;
+    content: "";
+    transform: translateY(-50%);
+}
+
+.dag__node.success .dag__marker {
+    border-color: #7EC8D4;
+    background: #123D45;
+    color: #E8EEF2;
+}
+
+.dag__node.running .dag__marker {
+    border-color: #F2C14E;
+    background: #3D3214;
+    color: #F9E8B4;
+}
+
+.dag__node.queued .dag__marker {
+    border-color: #8AA4B5;
+}
+
+.dag__node.failed .dag__marker {
+    border-color: #E07A5F;
+    background: #3A211E;
+    color: #F8D8D0;
+}
+
+.dag__edge.success,
+.dag__edge.success::after {
+    background: #7EC8D4;
     border-left-color: #7EC8D4;
 }
 
-.node.running {
+.dag__edge.running,
+.dag__edge.running::after {
+    background: #F2C14E;
     border-left-color: #F2C14E;
 }
 
-.node.queued {
-    border-left-color: #8AA4B5;
-}
-
-.node.failed {
+.dag__edge.failed,
+.dag__edge.failed::after {
+    background: #E07A5F;
     border-left-color: #E07A5F;
 }
 
@@ -213,6 +286,15 @@ h2 {
 }
 
 @media (max-width: 700px) {
+    .dag {
+        margin-inline: -0.2rem;
+        padding-inline: 0.75rem;
+    }
+
+    .dag__node {
+        min-width: 5.5rem;
+    }
+
     .store-grid {
         grid-template-columns: 1fr;
     }

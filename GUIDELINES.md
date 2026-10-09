@@ -120,7 +120,7 @@ the most recent period, so we are always predicting forward in time).
 - ✅ Implement drift detection with **Evidently** in the Airflow pipeline: // Ziad — DONE 2026-10-07
   - **Training / features**: reference is `X_train`, current is serving features (or a CSV). Feature drift is a warning and does not retrain by itself.
   - **Prediction**: each prediction is stored with its features. The daily DAG reconciles the next-day label, then scores delayed recall and ROC-AUC.
-  - ✅ Track the HTML report and metrics on an MLflow run in the `weather-rainfall-drift` experiment, and store `mlflow_run_id` on `drift_reports`.
+  - ✅ Track the HTML report and metrics on an MLflow run in the `weather-monitoring` experiment, and store `mlflow_run_id` on `drift_reports`.
   - ✅ Retrain when delayed recall is below 0.75, or delayed ROC-AUC is more than 0.02 under the champion's validation ROC-AUC. Grafana's webhook starts `weather_retrain` from that gate.
 - ✅ API performance monitoring with **Prometheus / Grafana**: // Thomas
   - Alerts for API down, 5xx rate, and latency.

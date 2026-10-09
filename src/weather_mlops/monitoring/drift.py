@@ -20,8 +20,6 @@ DRIFT_COLUMNS = (
 )
 PSI_THRESHOLD = 0.1
 DRIFT_SHARE = 0.3
-# Own experiment so monitoring runs do not sit next to training candidates.
-DRIFT_EXPERIMENT_NAME = "weather-rainfall-drift"
 CHAMPION_AUC_DROP = 0.02
 
 
@@ -223,50 +221,6 @@ def load_champion_roc_auc() -> float | None:
         return None
 
 
-def drift_run_metrics(result: dict[str, Any]) -> dict[str, float]:
-    """Numeric summary of one Evidently job, suitable for an MLflow run."""
-
-    feature = result.get("feature_drift") or {}
-    performance = result.get("performance") or {}
-    delayed = performance.get("metrics") or {}
-    metrics = {
-        "feature_drift_detected": float(bool(feature.get("drift_detected"))),
-        "drifted_column_share": float(feature.get("share") or 0),
-    }
-    if delayed:
-        metrics["delayed_recall"] = float(delayed.get("recall") or 0)
-        metrics["delayed_roc_auc"] = float(delayed.get("roc_auc") or 0)
-        metrics["retrain_requested"] = float(bool(performance.get("retrain")))
-    if performance.get("champion_roc_auc") is not None:
-        metrics["champion_roc_auc"] = float(performance["champion_roc_auc"])
-    return metrics
-
-
-def log_drift_to_mlflow(result: dict[str, Any], html_path: Path) -> str | None:
-    """Store the Evidently HTML report and its metrics on a monitoring run.
-
-    Tracking stays optional: an unset or unreachable MLflow server does not
-    fail the Airflow task. The run lives in its own experiment.
-    """
-
-    if not settings.mlflow_tracking_uri:
-        return None
-    try:
-        import mlflow
-
-        mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
-        mlflow.set_experiment(DRIFT_EXPERIMENT_NAME)
-        with mlflow.start_run(run_name="evidently-monitor") as run:
-            mlflow.set_tags({"stage": "monitoring", "scope": "drift"})
-            mlflow.log_metrics(drift_run_metrics(result))
-            if html_path.exists():
-                mlflow.log_artifact(str(html_path), artifact_path="evidently")
-            return str(run.info.run_id)
-    except Exception as exc:
-        print(f"MLflow drift logging skipped: {exc}")
-        return None
-
-
 def store_drift_report(
     payload: dict[str, Any],
     client: Any | None = None,
@@ -309,6 +263,8 @@ def monitoring_metrics(
         metrics["retrain_requested"] = float(bool(performance.get("retrain")))
         for name, value in (performance.get("metrics") or {}).items():
             metrics[f"delayed_{name}"] = float(value)
+        if performance.get("champion_roc_auc") is not None:
+            metrics["champion_roc_auc"] = float(performance["champion_roc_auc"])
     return metrics
 
 

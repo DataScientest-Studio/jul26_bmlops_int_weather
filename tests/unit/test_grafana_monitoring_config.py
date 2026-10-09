@@ -57,6 +57,15 @@ def test_weather_model_dashboard_includes_evidently_batch_metrics() -> None:
         "weather_model_retrain_requested",
     } <= expressions
 
+    panels = {panel["id"]: panel for panel in dashboard["panels"]}
+    assert panels[15]["type"] == "timeseries"
+    assert panels[16]["type"] == "timeseries"
+    assert panels[15]["targets"][0]["expr"] == "weather_evidently_drifted_column_share"
+    assert {target["expr"] for target in panels[16]["targets"]} == {
+        "weather_model_delayed_recall",
+        "weather_model_delayed_roc_auc",
+    }
+
 
 def test_evidently_airflow_task_receives_monitoring_and_supabase_environment() -> None:
     dag = (ROOT / "airflow/dags/weather_dag.py").read_text(encoding="utf-8")
@@ -66,6 +75,17 @@ def test_evidently_airflow_task_receives_monitoring_and_supabase_environment() -
     assert '"PUSHGATEWAY_URL": "http://pushgateway:9091"' in task
     assert '"SUPABASE_URL": os.environ.get("SUPABASE_URL")' in task
     assert '"SUPABASE_KEY": os.environ.get("SUPABASE_KEY")' in task
+
+
+def test_pipeline_versions_raw_and_processed_data_before_monitoring() -> None:
+    dag = (ROOT / "airflow/dags/weather_dag.py").read_text(encoding="utf-8")
+    task_start = dag.index('task_id="register_dataset"')
+    task = dag[task_start : dag.index('task_id="reconcile_outcomes"', task_start)]
+
+    assert "register_dataset_version.py --kind all" in task
+    assert '"SUPABASE_URL": os.environ.get("SUPABASE_URL")' in task
+    assert '"SUPABASE_KEY": os.environ.get("SUPABASE_KEY")' in task
+    assert "preprocessing >> register_dataset >> reconcile_outcomes >> evidently_monitor" in dag
 
 
 def test_monitoring_and_airflow_hydrate_operational_credentials_from_vault() -> None:

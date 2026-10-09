@@ -6,6 +6,7 @@ import requests
 
 from weather_mlops.data.open_meteo import (
     OpenMeteoError,
+    OpenMeteoRateLimitError,
     WeatherLocation,
     _get_json,
     chunk_date_range,
@@ -149,6 +150,34 @@ def test_get_json_retries_rate_limits_using_retry_after(monkeypatch) -> None:
 
     assert _get_json("https://archive-api.open-meteo.com/v1/archive", {}, 30) == {"ok": "yes"}
     assert waits == [2.0]
+
+
+def test_get_json_stops_immediately_on_daily_rate_limit(monkeypatch) -> None:
+    class DailyLimitResponse:
+        ok = False
+        status_code = 429
+        headers = {"Retry-After": "3600"}
+        text = '{"reason":"Daily API request limit exceeded"}'
+
+        def json(self) -> dict[str, str]:
+            return {"reason": "Daily API request limit exceeded"}
+
+    calls: list[int] = []
+    waits: list[float] = []
+
+    def fake_get(*args, **kwargs):
+        calls.append(1)
+        return DailyLimitResponse()
+
+    monkeypatch.setattr("weather_mlops.data.open_meteo.requests.get", fake_get)
+    monkeypatch.setattr("weather_mlops.data.open_meteo.time.sleep", waits.append)
+
+    with pytest.raises(OpenMeteoRateLimitError, match="HTTP 429") as error:
+        _get_json("https://archive-api.open-meteo.com/v1/archive", {}, 30)
+
+    assert error.value.scope == "day"
+    assert calls == [1]
+    assert waits == []
 
 
 def test_get_json_wraps_network_errors(monkeypatch) -> None:

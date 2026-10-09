@@ -325,85 +325,6 @@ def test_simulate_defense_drift_arms_the_gate_without_training(monkeypatch) -> N
     assert pushed == {"retrain": True, "url": "http://pushgateway:9091"}
 
 
-def test_log_drift_to_mlflow_skips_when_tracking_is_unset(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setattr(drift.settings, "mlflow_tracking_uri", None)
-
-    run_id = drift.log_drift_to_mlflow(
-        {"feature_drift": {}, "performance": None},
-        tmp_path / "x.html",
-    )
-
-    assert run_id is None
-
-
-def test_log_drift_to_mlflow_writes_report_metrics(tmp_path: Path, monkeypatch) -> None:
-    import sys
-
-    html = tmp_path / "feature_drift.html"
-    html.write_text("<html></html>", encoding="utf-8")
-    monkeypatch.setattr(drift.settings, "mlflow_tracking_uri", "http://mlflow:8080")
-    calls: dict = {}
-
-    class FakeRun:
-        class info:
-            run_id = "run-1"
-
-    class FakeContext:
-        def __enter__(self):
-            return FakeRun()
-
-        def __exit__(self, *args):
-            return False
-
-    class FakeMLflow:
-        @staticmethod
-        def set_tracking_uri(uri: str) -> None:
-            calls["uri"] = uri
-
-        @staticmethod
-        def set_experiment(name: str) -> None:
-            calls["experiment"] = name
-
-        @staticmethod
-        def start_run(run_name: str | None = None):
-            calls["run_name"] = run_name
-            return FakeContext()
-
-        @staticmethod
-        def set_tags(tags: dict) -> None:
-            calls["tags"] = tags
-
-        @staticmethod
-        def log_metrics(metrics: dict) -> None:
-            calls["metrics"] = metrics
-
-        @staticmethod
-        def log_artifact(path: str, artifact_path: str | None = None) -> None:
-            calls["artifact"] = (path, artifact_path)
-
-    monkeypatch.setitem(sys.modules, "mlflow", FakeMLflow)
-
-    run_id = drift.log_drift_to_mlflow(
-        {
-            "feature_drift": {"drift_detected": True, "share": 0.4},
-            "performance": {
-                "retrain": True,
-                "champion_roc_auc": 0.88,
-                "metrics": {"recall": 0.7, "roc_auc": 0.8},
-            },
-        },
-        html,
-    )
-
-    assert run_id == "run-1"
-    assert calls["experiment"] == "weather-rainfall-drift"
-    assert calls["run_name"] == "evidently-monitor"
-    assert calls["tags"]["stage"] == "monitoring"
-    assert calls["metrics"]["delayed_roc_auc"] == 0.8
-    assert calls["metrics"]["champion_roc_auc"] == 0.88
-    assert calls["artifact"][1] == "evidently"
-
-
 def test_monitoring_metrics_flatten_drift_and_delayed_performance() -> None:
     feature = {
         "drift_detected": True,
@@ -414,6 +335,7 @@ def test_monitoring_metrics_flatten_drift_and_delayed_performance() -> None:
     performance = {
         "retrain": True,
         "labeled_predictions": 42,
+        "champion_roc_auc": 0.88,
         "metrics": {"recall": 0.61, "roc_auc": 0.77},
     }
 
@@ -424,6 +346,7 @@ def test_monitoring_metrics_flatten_drift_and_delayed_performance() -> None:
     assert metrics["psi_Humidity3pm"] == 0.31
     assert metrics["retrain_requested"] == 1.0
     assert metrics["labeled_predictions"] == 42.0
+    assert metrics["champion_roc_auc"] == 0.88
     assert metrics["delayed_recall"] == 0.61
     assert "delayed_recall" not in drift.monitoring_metrics(feature, None)
 

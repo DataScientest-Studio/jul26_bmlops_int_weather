@@ -29,13 +29,16 @@ SLIDES: tuple[Slide, ...] = (
         title="Model health",
         kicker="Model health",
         notes=(
-            "Simulate drift shifts humidity and location, then runs the real Evidently check.",
-            "The live Grafana panels show report age, drifted features, and whether the "
-            "quality gate asked to retrain.",
-            "Only after the simulation do we show weather_retrain and its actual Airflow "
-            "task states.",
-            "A request does not promote a model: compare must still validate a candidate "
-            "before the champion changes.",
+            "First we run weather_pipeline: it ingests and merges the prepared batch, "
+            "preprocesses it, then snapshots both raw and processed data in Supabase Storage.",
+            "The dataset hash is recorded before monitoring, so training uses a reproducible "
+            "version rather than a mutable local file.",
+            "The live Grafana trends show Evidently's drift share, delayed quality, and the "
+            "retraining gate. We can point to the exact monitoring evidence before acting.",
+            "For the demo we can manually start weather_retrain on the latest registered snapshot. "
+            "Airflow shows train, evaluation, and compare as it runs.",
+            "Train registers the candidate in MLflow. Compare only promotes it to champion if it "
+            "beats the validation guards on that same dataset version.",
         ),
     ),
 )
