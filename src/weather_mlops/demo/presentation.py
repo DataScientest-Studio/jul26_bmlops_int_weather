@@ -680,7 +680,8 @@ SECTIONS = [
                 ],
                 "notes": [
                     "About 4 minutes, leaving 1 minute for limits.",
-                    "Before the defense: make up, make streamlit and make airflow-up. On "
+                    "Before the defense: make streamlit. That starts the API, Nginx, MLflow, "
+                    "Prometheus, Grafana, and Airflow. On "
                     "Gabriel's Mac, first stop Tailscale (it holds port 443) and Homebrew "
                     "httpd (it holds 8080).",
                     "Present the deck from the Streamlit container at 127.0.0.1:8501. The "

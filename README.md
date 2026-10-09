@@ -51,6 +51,13 @@ curl -k https://127.0.0.1/health
 | Scheduled daily retrain | `make airflow-up` — see the [Airflow wiki](https://github.com/DataScientest-Studio/jul26_bmlops_int_weather/wiki/Airflow) |
 | Follow logs / stop everything | `make logs` / `make down` |
 
+`make streamlit` starts the defense control room: the API and Nginx, MLflow,
+Prometheus, Pushgateway, Grafana, Airflow, and the demo. The Demo menu
+predicts from live weather, runs a simulated drift check that arms the Grafana
+retrain gate, draws the Airflow DAGs, and renders the API and model figures
+from Prometheus. The champion alias moves only if compare later promotes a
+candidate.
+
 Full Makefile target table lives in the [wiki Setup page](https://github.com/DataScientest-Studio/jul26_bmlops_int_weather/wiki/Setup).
 
 ## Local `.env`

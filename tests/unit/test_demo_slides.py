@@ -1,19 +1,17 @@
 from weather_mlops.demo.slides import SLIDES, slide_index
 
 
-def test_deck_is_three_screens() -> None:
+def test_deck_follows_the_defense_demo() -> None:
     ids = [slide.id for slide in SLIDES]
 
-    assert ids == ["architecture", "stores", "live"]
+    assert ids == ["live", "health"]
 
 
-def test_architecture_and_stores_name_the_stack() -> None:
-    architecture = SLIDES[slide_index("architecture")]
-    stores = SLIDES[slide_index("stores")]
+def test_model_health_keeps_feature_drift_separate_from_promotion() -> None:
+    health = SLIDES[slide_index("health")]
 
-    assert any("FastAPI" in note for note in architecture.notes)
-    assert any("weather-mlops-dvc" in note for note in stores.notes)
-    assert any("weather-mlops-mlflow" in note for note in stores.notes)
+    assert any("Evidently" in note for note in health.notes)
+    assert any("champion" in note for note in health.notes)
 
 
 def test_live_slide_does_not_mention_service_role_usage() -> None:
@@ -21,3 +19,9 @@ def test_live_slide_does_not_mention_service_role_usage() -> None:
 
     assert any("SUPABASE_KEY" in note for note in live.notes)
     assert any("Nginx" in note for note in live.notes)
+
+
+def test_model_health_slide_explains_the_live_grafana_evidence() -> None:
+    health = SLIDES[slide_index("health")]
+
+    assert any("Grafana" in note for note in health.notes)

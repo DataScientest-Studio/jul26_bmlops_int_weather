@@ -1,4 +1,4 @@
-"""The /predict, /predict/live_data and /train endpoints must require basic auth."""
+"""The predict, train, and drift-simulate endpoints must require basic auth."""
 
 import pytest
 from fastapi.testclient import TestClient
@@ -154,3 +154,22 @@ def test_empty_env_returns_503(client, monkeypatch):
     response = client.post("/predict", json={"location": "Sydney"}, auth=("", ""))
 
     assert response.status_code == 503
+
+
+def test_simulate_rejects_missing_credentials(client):
+    response = client.post("/monitor/simulate")
+
+    assert response.status_code == 401
+
+
+def test_simulate_returns_the_armed_gate(client, monkeypatch):
+    monkeypatch.setattr(
+        "weather_mlops.api.main.simulate_defense_drift",
+        lambda: {"drift_detected": True, "retrain": True, "drifted_columns": ["Humidity3pm"]},
+    )
+
+    response = client.post("/monitor/simulate", auth=(GOOD_USER, GOOD_PASS))
+
+    assert response.status_code == 200
+    assert response.json()["retrain"] is True
+    assert response.json()["drifted_columns"] == ["Humidity3pm"]

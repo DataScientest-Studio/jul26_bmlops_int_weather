@@ -48,6 +48,8 @@ services:
       SUPABASE_KEY: ${SUPABASE_KEY:-}
       GIT_COMMIT: ${GIT_COMMIT:-}
       MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-http://mlflow:8080}
+      # Present when monitoring is up. The simulate endpoint reports a push failure otherwise.
+      PUSHGATEWAY_URL: ${PUSHGATEWAY_URL:-http://pushgateway:9091}
       API_AUTH_USER: ${API_AUTH_USER:-}
       API_AUTH_PASSWORD: ${API_AUTH_PASSWORD:-}
     volumes:
@@ -122,6 +124,17 @@ services:
       - "127.0.0.1:8501:8501"
     environment:
       DEMO_API_URL: https://nginx
+      # Read-only in-container endpoint for compact Streamlit telemetry cards.
+      PROMETHEUS_URL: http://prometheus:9090
+      # Browser-facing links: Grafana, Airflow and MLflow stay bound to localhost.
+      GRAFANA_API_URL: http://127.0.0.1:3000/d/weather-api/weather-api
+      GRAFANA_MODEL_URL: http://127.0.0.1:3000/d/weather-model/weather-model
+      GRAFANA_EMBED_ENABLED: "true"
+      AIRFLOW_URL: http://127.0.0.1:8081/dags/weather_retrain/grid
+      AIRFLOW_API_URL: http://airflow-webserver:8080
+      AIRFLOW_API_USER: ${AIRFLOW_API_USER:-}
+      AIRFLOW_API_PASSWORD: ${AIRFLOW_API_PASSWORD:-}
+      MLFLOW_URL: http://127.0.0.1:8080
       # Not in .env. `make streamlit` hydrates these from Vault first.
       # Empty defaults keep other compose commands from warning.
       API_AUTH_USER: ${API_AUTH_USER:-}
@@ -221,6 +234,11 @@ services:
       GF_SECURITY_ADMIN_USER:
       GF_SECURITY_ADMIN_PASSWORD:
       GF_PLUGINS_PREINSTALL_DISABLED: "true"
+      # Streamlit and Grafana are separate localhost origins in this demo.
+      GF_SECURITY_ALLOW_EMBEDDING: "true"
+      # Grafana is published only on localhost; embedded panels need read-only access.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
       AIRFLOW_API_USER:
       AIRFLOW_API_PASSWORD:
     depends_on:

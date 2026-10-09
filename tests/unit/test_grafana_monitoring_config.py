@@ -74,5 +74,10 @@ def test_monitoring_and_airflow_hydrate_operational_credentials_from_vault() -> 
 
     assert "with_vault_env.py --monitoring" in makefile
     assert "up -d prometheus pushgateway grafana" in makefile
+    assert "\nstreamlit: monitoring airflow-up\n" in makefile
+    assert "Local URL: http://127.0.0.1:8501" in makefile
+    assert "Local URL: https://127.0.0.1" in makefile
+    assert "Local URL: http://127.0.0.1:3000" in makefile
+    assert "Local URL: http://127.0.0.1:8081" in makefile
     assert "_AIRFLOW_WWW_USER_USERNAME: ${AIRFLOW_API_USER}" in airflow
     assert "_AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_API_PASSWORD}" in airflow

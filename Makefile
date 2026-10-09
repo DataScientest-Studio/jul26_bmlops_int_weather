@@ -64,8 +64,17 @@ serve:
 api: serve
 gateway: serve
 
-streamlit: serve
-	$(LOCAL_ENV) uv run python scripts/with_vault_env.py $(COMPOSE) --profile streamlit up -d --build --no-deps streamlit
+streamlit: monitoring airflow-up
+	$(LOCAL_ENV) uv run python scripts/with_vault_env.py --demo $(COMPOSE) --profile streamlit up -d --build --no-deps streamlit
+	@printf '%s\n' '' 'Services started.' '' \
+		'  Streamlit    Local URL: http://127.0.0.1:8501' \
+		'  API          Local URL: https://127.0.0.1' \
+		'  Grafana      Local URL: http://127.0.0.1:3000' \
+		'  Airflow      Local URL: http://127.0.0.1:8081' \
+		'  MLflow       Local URL: http://127.0.0.1:8080' \
+		'  Prometheus   Local URL: http://127.0.0.1:9090' \
+		'  Pushgateway  Local URL: http://127.0.0.1:9091' \
+		''
 
 mlflow:
 	$(LOCAL_ENV) uv run python scripts/with_vault_env.py --s3 $(COMPOSE) --profile mlflow up -d --build --wait mlflow
@@ -74,6 +83,7 @@ monitoring: serve
 	$(LOCAL_ENV) uv run python scripts/with_vault_env.py --monitoring $(COMPOSE) --profile monitoring up -d prometheus pushgateway grafana
 
 down:
+	@if [ -f airflow/.env ]; then $(MAKE) airflow-down; fi
 	$(COMPOSE) --profile gateway --profile streamlit --profile test --profile mlflow --profile monitoring down --remove-orphans
 
 logs:

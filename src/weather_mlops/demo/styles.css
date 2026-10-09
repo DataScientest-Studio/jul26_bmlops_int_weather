@@ -13,8 +13,8 @@ footer {
 }
 
 .block-container {
-    padding-top: 1.2rem;
-    max-width: 960px;
+    padding-top: 1.5rem;
+    max-width: 1180px;
 }
 
 .kicker {
@@ -29,8 +29,15 @@ h1 {
     font-weight: 600 !important;
     font-size: clamp(2rem, 4vw, 3rem) !important;
     color: #E8EEF2 !important;
-    max-width: 14ch;
+    max-width: 18ch;
     margin-bottom: 1.2rem !important;
+}
+
+h2 {
+    font-family: "IBM Plex Sans", sans-serif !important;
+    font-size: 1.05rem !important;
+    color: #7EC8D4 !important;
+    margin: 1.2rem 0 0.6rem !important;
 }
 
 .lede {
@@ -50,9 +57,25 @@ h1 {
 .node {
     font-family: "IBM Plex Sans", sans-serif;
     background: #123044;
-    border-left: 4px solid #F2C14E;
+    border-left: 4px solid #35566A;
     padding: 0.85rem 1rem;
     min-width: 7rem;
+}
+
+.node.success {
+    border-left-color: #7EC8D4;
+}
+
+.node.running {
+    border-left-color: #F2C14E;
+}
+
+.node.queued {
+    border-left-color: #8AA4B5;
+}
+
+.node.failed {
+    border-left-color: #E07A5F;
 }
 
 .store-grid {
@@ -74,26 +97,115 @@ h1 {
     color: #F2C14E;
 }
 
-.talk-notes {
-    font-family: "IBM Plex Sans", sans-serif;
+.forecast {
+    margin-top: 1.85rem;
+    min-height: 19rem;
+    padding: 1.5rem 1.6rem;
+    display: grid;
+    place-items: center;
+    align-content: center;
+    text-align: center;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+}
+
+.forecast--rain {
+    background: radial-gradient(circle at 50% 26%, #173d59 0%, #0c2033 35%, transparent 68%);
+}
+
+.forecast--dry {
+    background: radial-gradient(circle at 50% 26%, #17323f 0%, #0c2033 35%, transparent 68%);
+}
+
+.forecast--ready {
     color: #B7C4CC;
-    max-width: 52ch;
-    padding-left: 1.1rem;
+}
+
+.forecast.forecast--ready strong {
+    font-size: clamp(2.4rem, 4.5vw, 3.5rem);
+    max-width: 13ch;
+}
+
+.forecast__icon {
+    font-size: 4.3rem;
+    line-height: 1;
+    margin-bottom: 0.3rem;
 }
 
 .forecast strong {
     font-family: "IBM Plex Sans", sans-serif;
-    font-size: 2.4rem;
+    font-size: clamp(4.8rem, 11vw, 7.2rem);
+    line-height: 0.95;
     display: block;
 }
 
-.forecast span {
+.forecast__label {
+    font-family: "IBM Plex Sans", sans-serif;
+    color: #E8EEF2;
+    font-size: clamp(1.2rem, 2.2vw, 1.6rem);
+    margin-top: 0.55rem;
+}
+
+.forecast__probability {
     font-family: "IBM Plex Mono", monospace;
-    color: #7EC8D4;
+    color: #F2C14E;
+    font-size: 2rem;
+    font-weight: 500;
+    margin-top: 0.75rem;
+}
+
+.forecast__detail {
+    color: #B7C4CC;
+    font-size: 1.1rem;
+}
+
+.prediction-action-spacer {
+    height: 1.65rem;
+}
+
+.telemetry-divider {
+    border-top: 1px solid #1D3445;
+    margin: 1.4rem 0 1rem;
+}
+
+.health-result {
+    margin: 1.25rem 0;
+    padding: 1.1rem 1.3rem;
+    border-left: 4px solid #E07A5F;
+    background: #102633;
+    font-family: "IBM Plex Sans", sans-serif;
+}
+
+.health-result strong,
+.health-result span {
+    display: block;
+}
+
+.health-result strong {
+    color: #E8EEF2;
+    font-size: 1.4rem;
+}
+
+.health-result span {
+    color: #B7C4CC;
+    margin-top: 0.3rem;
+}
+
+[data-testid="stMetric"] {
+    padding: 0.25rem 1.1rem 0.45rem;
+}
+
+[data-testid="stMetric"]:not(:last-child) {
+    border-right: 1px solid #1D3445;
+}
+
+[data-testid="stMetricLabel"] {
+    color: #B7C4CC;
 }
 
 .stButton button {
-    border-radius: 0 !important;
+    border-radius: 0.45rem !important;
     background: #F2C14E !important;
     color: #061018 !important;
     border: 0 !important;
@@ -103,6 +215,15 @@ h1 {
 @media (max-width: 700px) {
     .store-grid {
         grid-template-columns: 1fr;
+    }
+
+    .forecast {
+        min-height: 17rem;
+        padding-top: 1.5rem;
+    }
+
+    .forecast__icon {
+        font-size: 4.2rem;
     }
 }
 

@@ -100,9 +100,9 @@ the most recent period, so we are always predicting forward in time).
   - At the end of the training script (or later via Airflow), load the previous version and compare it with the newly trained model.
 - ✅ Split the application into Docker-based microservices with simple orchestration using `docker-compose`. // Gabriel — DONE 2026-09-09; jobs `ingestion` + `preprocess`, long-running `api`. This PR: profiles `gateway` (Nginx), `streamlit`, `test`.
   - ✅ Training removed from container startup and from the Makefile — the model is trained only via `POST /train`. // Gabriel — DONE 2026-09-10, agreed in the Sep 10 internal meeting
-  - **(OPTIONAL)** One container per ML phase (`preprocess`, `train`, `evaluate`) instead of a single `trainer`. // Suggestion from Vincent — `preprocess` is now its own container; `train` runs in the API
-- Develop automatic model and component updates: // Gabriel + Ziad — OPEN (no scheduler yet). ✅ POST /train done; still needs Airflow.
-  - Scheduled training: cron script, Jenkins, or Airflow (recommended but more complex). // Thomas - Airflow. Trigger already exists: `make train` → `POST /train`.
+  - **(OPTIONAL, not doing)** One container per ML phase (`preprocess`, `train`, `evaluate`). `preprocess` is its own image. Train and evaluate are separate Airflow tasks on the API image, which is enough.
+- ✅ Develop automatic model and component updates: // Gabriel + Ziad — DONE. `weather_pipeline` runs daily. `weather_retrain` starts from the Grafana webhook.
+  - ✅ Scheduled retraining via Airflow. The retrain DAG calls `POST /train`, then evaluate and compare.
 - ✅ Use **DVC** (without Git) to version datasets. // Ziad — DONE 2026-08-31; MLflow hash logging deferred to the later MLflow stage. ✅ hash logging now in MLflow.
   - This PR: processed `manifest.json` + sha256 catalog, independent model/metrics pointers, `make dvc-pull` / `dvc-push`. Blobs pushed 2026-09-15.
 - **(OPTIONAL)** Implement unit tests. // Run inside the CI/CD or docker container // used for API tests (including authorization and authentification). // Thomas + Gabriel
@@ -113,24 +113,18 @@ the most recent period, so we are always predicting forward in time).
 - **(OPTIONAL)** Optimize and secure the API (basic auth or OAuth2). // Gabriel + Ziad = [NGINX] - Sprint 1 API security module - review the slides from master class - check optional course
   - ✅ Basic auth on `/predict`, `/predict/live_data`, `/train`. `/health` stays open for the docker healthcheck. Credentials live in Vault (`API_AUTH_USER` / `API_AUTH_PASSWORD`); local `.env` is only `SUPABASE_URL` + `SUPABASE_KEY`. // Gabriel + Ziad
   - ✅ Nginx gateway (TLS, HTTP→HTTPS, per-IP rate limits on predict and `/train`). Opt-in Compose profile `gateway`. // Ziad — 2026-09-15
-- **(OPTIONAL)** Implement scalability with Kubernetes. // Thomas — OPEN, later
+- **(OPTIONAL, out of scope)** Kubernetes. // Thomas — not doing this. MinIO is out as well; artifacts stay in Supabase Storage.
 
 ### Phase 3: Monitoring & Maintenance — Deadline: Oct 2
 
-- Implement drift detection with **Evidently** in the Airflow pipeline: // Ziad — OPEN (needs Airflow + MLflow first). MLflow is in; still needs Airflow.
-  - **Training**:
-    - Reference dataset: historical dataset.
-    - Current dataset: recent dataset.
-    - Track generated report and metrics in MLflow.
-    - Retrain the model if necessary.
-  - **Prediction**:
-    - Store each prediction along with its features in the database.
-    - Add an automated DAG to check for data drift.
-    - Track generated report and metrics in MLflow. // Jonathan
-    - Trigger the training DAG if needed.
-- API performance monitoring with **Prometheus / Grafana**: // Thomas
-  - Define alerts.
-  - Training trigger via built-in Grafana webhook.
+- ✅ Implement drift detection with **Evidently** in the Airflow pipeline: // Ziad — DONE 2026-10-07
+  - **Training / features**: reference is `X_train`, current is serving features (or a CSV). Feature drift is a warning and does not retrain by itself.
+  - **Prediction**: each prediction is stored with its features. The daily DAG reconciles the next-day label, then scores delayed recall and ROC-AUC.
+  - ✅ Track the HTML report and metrics on an MLflow run in the `weather-rainfall-drift` experiment, and store `mlflow_run_id` on `drift_reports`.
+  - ✅ Retrain when delayed recall is below 0.75, or delayed ROC-AUC is more than 0.02 under the champion's validation ROC-AUC. Grafana's webhook starts `weather_retrain` from that gate.
+- ✅ API performance monitoring with **Prometheus / Grafana**: // Thomas
+  - Alerts for API down, 5xx rate, and latency.
+  - Training trigger via the Grafana webhook, only from the delayed-performance gate.
 - ✅ Create a simple **Streamlit** application to interact with the API and make predictions. // Ziad — `make streamlit`, three screens, no `SUPABASE_KEY`. DONE 2026-09-15
 - Finish the repo's technical documentation. // Gabriel (maybe use WIKI - README (first overview - talk about the project setup / goal + setup + technologies) - This PR rewrote README for Compose-first commands; wiki still open. 
 
