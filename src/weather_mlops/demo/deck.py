@@ -1,11 +1,6 @@
 """build the html of each slide of the defense deck."""
 
 from weather_mlops.demo.presentation import (
-    CUTOFFS,
-    METRICS,
-    RECALL_GATE,
-    ROC_AUC,
-    ROC_POINTS,
     STAGES,
     TEAM,
     all_slides,
@@ -181,81 +176,65 @@ def make_flow(slide):
     return make_title(slide) + f'<div class="lanes">{lanes}</div>' + make_points_and_facts(slide)
 
 
-def make_bar(split, value, gate):
-    css = "bar"
-    if gate is not None and value < gate:
-        css = "bar is-below"
-    tick = ""
-    if gate is not None:
-        tick = f'<span class="gate" style="left:{gate * 100:.1f}%"></span>'
+def make_card(card, focus):
+    points = ""
+    for point in card["points"]:
+        points = points + f"<li>{point}</li>"
     return (
-        '<div class="bar-row">'
-        f'<span class="bar-split">{split}</span>'
-        f'<span class="bar-track"><span class="{css}" style="width:{value * 100:.1f}%"></span>'
-        f"{tick}</span>"
-        f'<span class="bar-value">{value:.3f}</span>'
+        f'<div class="zone" data-focus="{focus}">'
+        f'<p class="zone-name">{card["name"]}</p>'
+        f'<p class="zone-ask">{card["ask"]}</p>'
+        f'<ul class="zone-points">{points}</ul>'
         "</div>"
     )
 
 
-def make_metrics(slide):
-    chart = ""
-    for metric, splits in METRICS.items():
-        gate = None
-        name = metric
-        # only recall has a promotion gate
-        if metric == "Recall":
-            gate = RECALL_GATE
-            name = name + f' <span class="gate-label">dashed line: gate at {gate:.2f}</span>'
-        bars = ""
-        for split, value in splits.items():
-            bars = bars + make_bar(split, value, gate)
-        chart = chart + f'<div class="bar-group"><p class="bar-metric">{name}</p>{bars}</div>'
-    return (
-        make_title(slide)
-        + f'<div class="split"><div class="chart">{chart}</div>{make_points(slide)}</div>'
-    )
-
-
-def to_chart(fpr, tpr):
-    # the chart is 300 x 300 pixels, with (0, 0) in the bottom left corner
-    x = 40 + fpr * 300
-    y = 320 - tpr * 300
-    return x, y
-
-
-def make_roc(slide):
-    line = ""
-    for fpr, tpr in ROC_POINTS:
-        x, y = to_chart(fpr, tpr)
-        line = line + f"{x:.1f},{y:.1f} "
-    dots = ""
+def make_tracking(slide):
+    # one row of cards for what a training run records, one for a daily Evidently run
     rows = ""
-    for cutoff, caught, flagged in CUTOFFS:
-        x, y = to_chart(flagged, caught)
-        dots = dots + f'<circle cx="{x:.1f}" cy="{y:.1f}" r="5" class="roc-dot"/>'
-        dots = dots + f'<text x="{x + 9:.1f}" y="{y + 15:.1f}" class="roc-label">{cutoff}</text>'
-        rows = rows + f"<tr><td>{cutoff}</td><td>{caught:.1%}</td><td>{flagged:.1%}</td></tr>"
-    chart = (
-        '<svg viewBox="0 0 360 360" class="roc-chart">'
-        f'<polygon points="40,320 {line}340,320" class="roc-area"/>'
-        '<line x1="40" y1="320" x2="340" y2="20" class="roc-diagonal"/>'
-        f'<polyline points="{line}" class="roc-line"/>'
-        '<line x1="40" y1="320" x2="340" y2="320" class="roc-axis"/>'
-        '<line x1="40" y1="320" x2="40" y2="20" class="roc-axis"/>'
-        '<text x="190" y="348" class="roc-axis-label">dry days flagged as rain</text>'
-        '<text x="14" y="170" class="roc-axis-label" transform="rotate(-90 14 170)">'
-        "rainy days caught</text>"
-        f'<text x="150" y="250" class="roc-auc">area = {ROC_AUC}</text>'
-        f"{dots}</svg>"
-    )
-    table = (
-        '<table class="facts"><tr><th>Cut-off</th><th>Rain caught</th><th>Dry flagged</th></tr>'
-        f"{rows}</table>"
-    )
+    for row_number, row in enumerate(slide["rows"]):
+        cards = ""
+        for number, card in enumerate(row["cards"]):
+            cards = cards + make_card(card, f"card-{row_number}-{number}")
+        css = "zones run-zones"
+        if row_number > 0:
+            css = css + " is-monitoring"
+        rows = (
+            rows
+            + f'<p class="lane-name" data-focus="row-{row_number}">{row["name"]}</p>'
+            + f'<div class="{css}">{cards}</div>'
+        )
+    return make_title(slide) + rows
+
+
+def make_version(step, number):
+    css = f"is-{step['state']}"
+    alias = ""
+    if step["alias"] != "":
+        alias = f'<span class="alias">{step["alias"]}</span>'
+    note = ""
+    if step["note"] != "":
+        note = f'<span class="step-note">{step["note"]}</span>'
+    return f'<li class="{css}" data-focus="version-{number}">{alias}{step["label"]}{note}</li>'
+
+
+def make_registry(slide):
+    steps = ""
+    for number, step in enumerate(slide["versions"]["steps"]):
+        steps = steps + make_version(step, number)
+    hub = slide["hub"]
     return (
         make_title(slide)
-        + f'<div class="split"><div>{chart}</div><div>{make_points(slide)}{table}</div></div>'
+        + '<div class="lanes"><div class="lane versions">'
+        + f'<p class="lane-name">{slide["versions"]["name"]}</p>'
+        + f'<ol class="lane-steps">{steps}</ol></div></div>'
+        + '<div class="split">'
+        + f'<div><p class="gate-name">{slide["gate"]}</p>{make_points(slide, tag="ol")}</div>'
+        + '<div class="arch-hub" data-focus="hub">'
+        + f'<p class="hub-name">{hub["name"]}</p>'
+        + f'<p class="hub-note"><code>{hub["uri"]}</code></p>'
+        + f'<p class="hub-note">{hub["note"]}</p>'
+        + "</div></div>"
     )
 
 
@@ -280,14 +259,14 @@ def make_body(slide):
         return make_system(slide)
     elif layout == "flow":
         return make_flow(slide)
-    elif layout == "metrics":
-        return make_metrics(slide)
+    elif layout == "tracking":
+        return make_tracking(slide)
+    elif layout == "registry":
+        return make_registry(slide)
     elif layout == "script":
         return make_title(slide) + make_points(slide, tag="ol")
     elif layout == "closing":
         return make_closing(slide)
-    elif layout == "roc":
-        return make_roc(slide)
     else:
         return make_title(slide) + make_points_and_facts(slide)
 

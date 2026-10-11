@@ -18,68 +18,6 @@ STAGES = [
 
 TEAM = ["Gabriel", "Jonathan", "Thomas", "Ziad"]
 
-# latest candidate (rolling windows) on the DVC snapshot of 2 Oct 2026, code of commit
-# 32ea7ea. Re-read them in MLflow on the demo machine before the defense.
-METRICS = {
-    "ROC-AUC": {"Train": 0.862, "Validation": 0.782, "Test": 0.814},
-    "Recall": {"Train": 0.78, "Validation": 0.673, "Test": 0.705},
-    "Precision": {"Train": 0.515, "Validation": 0.485, "Test": 0.506},
-}
-RECALL_GATE = 0.75
-
-# roc curve of the same candidate on the validation window (18 Mar to 15 Jun 2019, 4,410 rows):
-# [false positive rate, true positive rate]
-ROC_POINTS = [
-    [0.0, 0.0],
-    [0.001, 0.007],
-    [0.006, 0.038],
-    [0.012, 0.076],
-    [0.018, 0.119],
-    [0.029, 0.17],
-    [0.042, 0.227],
-    [0.055, 0.271],
-    [0.066, 0.317],
-    [0.076, 0.364],
-    [0.09, 0.402],
-    [0.105, 0.441],
-    [0.119, 0.471],
-    [0.136, 0.503],
-    [0.151, 0.532],
-    [0.17, 0.562],
-    [0.189, 0.593],
-    [0.214, 0.618],
-    [0.241, 0.644],
-    [0.262, 0.673],
-    [0.282, 0.702],
-    [0.304, 0.722],
-    [0.33, 0.747],
-    [0.36, 0.778],
-    [0.392, 0.81],
-    [0.424, 0.826],
-    [0.456, 0.848],
-    [0.491, 0.861],
-    [0.526, 0.881],
-    [0.564, 0.892],
-    [0.601, 0.921],
-    [0.644, 0.933],
-    [0.695, 0.949],
-    [0.744, 0.963],
-    [0.796, 0.975],
-    [0.85, 0.991],
-    [0.908, 0.997],
-    [0.955, 0.999],
-    [0.996, 1.0],
-    [1.0, 1.0],
-]
-ROC_AUC = 0.782
-# cut-off, share of rainy days caught, share of dry days flagged as rain
-CUTOFFS = [
-    [0.3, 0.861, 0.491],
-    [0.42, 0.751, 0.337],
-    [0.5, 0.673, 0.262],
-    [0.7, 0.441, 0.105],
-]
-
 SECTIONS = [
     {
         "presenter": "Gabriel",
@@ -464,108 +402,241 @@ SECTIONS = [
                 ],
             },
             {
-                "id": "promotion",
-                "title": "Model registry: only the gate moves @champion",
-                "layout": "metrics",
-                "stages": ["tracking", "registry"],
+                "id": "tracking",
+                "title": "Experiment tracking: every model and every day on record",
+                "layout": "tracking",
+                "stages": ["tracking"],
                 "figure": None,
                 "lanes": [],
-                "points": [
-                    "Every run is tracked in MLflow with its data hash and git commit, then "
-                    "registered as @candidate.",
-                    "Promote only if validation recall is at least 0.75 and ROC-AUC beats "
-                    "@champion.",
-                    "Latest candidate: validation recall 0.673, so the champion stays.",
+                # champion metrics: the baseline's settings on 90 unseen validation days, from
+                # the 12-trial search run, before the refit on all Kaggle rows
+                "rows": [
+                    {
+                        "name": "Each training run, from make train, POST /train or Airflow",
+                        "cards": [
+                            {
+                                "name": "Parameters",
+                                "ask": "How was it trained?",
+                                "points": [
+                                    "XGBoost settings: trees, depth, learning rate",
+                                    "Training rows and class weight",
+                                ],
+                            },
+                            {
+                                "name": "Metrics",
+                                "ask": "How good is it?",
+                                "points": [
+                                    "Champion ROC-AUC 0.866",
+                                    "Recall 0.776",
+                                    "Precision 0.512",
+                                ],
+                            },
+                            {
+                                "name": "Tags",
+                                "ask": "Which data and code?",
+                                "points": [
+                                    "<code>dataset_sha256</code>: the DVC snapshot",
+                                    "<code>git_commit</code>: the code",
+                                ],
+                            },
+                            {
+                                "name": "Artifacts",
+                                "ask": "Can we reload it?",
+                                "points": [
+                                    "The model itself",
+                                    "Dataset manifest",
+                                    "<code>release.json</code> ties them together",
+                                ],
+                            },
+                        ],
+                    },
+                    {
+                        "name": "Each evening, the Evidently job on the latest predictions",
+                        "cards": [
+                            {
+                                "name": "Drift",
+                                "ask": "Did inputs change?",
+                                "points": [
+                                    "PSI per feature against the training data",
+                                    "Share of drifted features",
+                                ],
+                            },
+                            {
+                                "name": "Real performance",
+                                "ask": "Was it right?",
+                                "points": [
+                                    "Recall on predictions whose outcome is known",
+                                    "Retrain request below 0.75",
+                                ],
+                            },
+                            {
+                                "name": "Tags",
+                                "ask": "Which model?",
+                                "points": [
+                                    "Version holding <code>@champion</code>",
+                                    "Hash of its training data",
+                                ],
+                            },
+                            {
+                                "name": "Artifacts",
+                                "ask": "Can we read it?",
+                                "points": [
+                                    "Full Evidently HTML report, on S3",
+                                    "<code>summary.json</code>",
+                                ],
+                            },
+                        ],
+                    },
                 ],
+                "points": [],
                 "links": [
-                    ["Promotion rule", "src/weather_mlops/models/comparison.py"],
                     ["Tracking", "src/weather_mlops/models/tracking.py"],
-                    ["Baseline", "src/weather_mlops/models/baseline.py"],
+                    ["Evidently runs", "src/weather_mlops/monitoring/drift.py"],
+                    ["MLflow server", "docker-compose.yml"],
                 ],
                 # elements lit on the slide while each note is read
                 "focus": [
                     ["title"],
-                    ["point-0"],
-                    ["point-1"],
-                    ["point-2"],
-                    [],
-                    [],
+                    ["row-0", "card-0-0", "card-0-1", "card-0-2", "card-0-3"],
+                    ["card-0-0"],
+                    ["card-0-1"],
+                    ["card-0-2"],
+                    ["card-0-3"],
+                    ["row-1", "card-1-0", "card-1-1", "card-1-2", "card-1-3"],
+                    ["card-1-0"],
+                    ["card-1-1"],
+                    ["card-1-2"],
+                    ["card-1-3"],
                 ],
                 "notes": [
-                    "[TITLE] Once a dataset has a hash, every model can point to it.",
-                    "[MLFLOW (bullet 1)] Every training run logs its parameters, metrics, model "
-                    "and dataset manifest to MLflow, tagged with the dataset hash and the git "
-                    "commit. So any model traces back to its exact data and code. Each run also "
-                    "becomes a new model version, with the candidate alias.",
-                    "[GATE (bullet 2)] The API serves only the champion alias. Our first champion "
-                    "came from make baseline: a twelve-trial random search on Kaggle data, then a "
-                    "refit on all Kaggle rows. From then on, only the gate moves the champion: "
-                    "validation recall of at least zero point seven five, and a higher validation "
-                    "ROC-AUC than the champion. It also refuses runs from uncommitted code.",
-                    "[CHART + LATEST CANDIDATE (bullet 3)] This chart is our latest candidate, "
-                    "trained on the rolling window. On validation, ROC-AUC is zero point seven "
-                    "eight and recall zero point six seven, below the dashed line. So the gate "
-                    "rejected it, and the champion stayed.",
-                    "[CHART: TRAIN VS VALIDATION] Why the drop after training? Mostly the data "
-                    "source. We checked it: one model scores zero point eight seven on the next "
-                    "year of station data, and only zero point seven six on the next year of "
-                    "Open-Meteo data.",
-                    "[KNOWN LIMIT] One known limit: the gate compares with the score the champion "
-                    "got at its own promotion, on an older window. Re-scoring the champion on the "
-                    "candidate's window is our next fix.",
+                    "[TITLE] Once a dataset has a hash, every model needs a record of how it was "
+                    "made, and so does every day it serves. MLflow keeps both.",
+                    "[ROW 1 LABEL] First, training. Whoever starts it, a developer with make "
+                    "train, a client calling POST /train or Airflow, the same function writes "
+                    "the record.",
+                    "[PARAMETERS] It records how the model was trained: the XGBoost settings, the "
+                    "training rows and the class weight.",
+                    "[METRICS] And how good it is. For our current champion, the baseline, "
+                    "measured on ninety days it had never seen: ROC-AUC zero point eight seven, "
+                    "recall zero point seven eight, precision zero point five one. That zero point "
+                    "eight seven is the bar our Grafana alert watches.",
+                    "[TAGS] Every run is tagged with the hash of its DVC snapshot and the git "
+                    "commit of its code. From any model, we can go back to its exact data and its "
+                    "exact code.",
+                    "[ARTIFACTS] The model itself, the dataset manifest, and a release file that "
+                    "ties them together. MLflow can reload any version at any time.",
+                    "[ROW 2 LABEL] Second, and just as important: every evening, after new weather "
+                    "comes in, our Evidently job also writes a run to MLflow, in its own "
+                    "experiment.",
+                    "[DRIFT] Did the inputs change? It computes the drift score, PSI, for each "
+                    "feature against the training data, and the share of features that drifted.",
+                    "[REAL PERFORMANCE] Was the model right? Once the real weather is known, it "
+                    "computes the real recall of our past predictions. Below zero point seven "
+                    "five, it requests a retrain.",
+                    "[TAGS] Each report is tagged with the champion version it watched and the "
+                    "hash of that model's training data. So drift is always measured against the "
+                    "right reference.",
+                    "[ARTIFACTS] The full Evidently report is stored as HTML on S3, so we can open "
+                    "the report for any past day. The numbers also go to Grafana, as Thomas will "
+                    "show.",
                 ],
             },
             {
-                "id": "roc",
-                "title": "ROC curve: how well the model ranks days",
-                "layout": "roc",
-                "stages": [],
+                "id": "registry",
+                "title": "Model registry: only the gate moves @champion",
+                "layout": "registry",
+                "stages": ["registry"],
                 "figure": None,
                 "lanes": [],
+                # recall of the latest candidate, as in the deck's other numbers: DVC snapshot of
+                # 2 Oct 2026, code of commit 32ea7ea
+                "versions": {
+                    "name": "Versions of one registered model, oldest to newest",
+                    "steps": [
+                        {"label": "Older versions", "note": "", "state": "older", "alias": ""},
+                        {
+                            "label": "Baseline",
+                            "note": "served today",
+                            "state": "champion",
+                            "alias": "@champion",
+                        },
+                        {
+                            "label": "Candidate",
+                            "note": "recall 0.673, rejected",
+                            "state": "rejected",
+                            "alias": "",
+                        },
+                        {
+                            "label": "Newest",
+                            "note": "waits for the gate",
+                            "state": "candidate",
+                            "alias": "@candidate",
+                        },
+                    ],
+                },
+                "gate": "The gate moves @champion only if all three hold",
                 "points": [
-                    "Each point is one cut-off between rain and no rain.",
-                    "The area under the curve is ROC-AUC: 0.782. Always no gets 0.5.",
-                    "At our 0.5 cut-off: 67.3% of rainy days caught.",
-                    "A 0.42 cut-off would meet the recall rule: 75.1% of rainy days caught.",
+                    "The release is complete: clean git commit, version matches its run, all "
+                    "files in MLflow.",
+                    "Validation recall is at least 0.75.",
+                    "Validation ROC-AUC beats the champion.",
                 ],
+                "hub": {
+                    "name": "FastAPI asks for a name, not a file",
+                    "uri": "models:/weather-rainfall-classifier@champion",
+                    "note": "It checks the alias on every prediction and reloads only when the "
+                    "version changes. Rollback: point the alias back.",
+                },
                 "links": [
-                    ["Evaluation", "src/weather_mlops/models/evaluation.py"],
+                    ["Promotion rule", "src/weather_mlops/models/comparison.py"],
+                    ["Release check", "src/weather_mlops/models/release.py"],
+                    ["Model loading", "src/weather_mlops/models/predict.py"],
                 ],
                 # elements lit on the slide while each note is read
                 "focus": [
                     ["title"],
-                    [],
+                    ["version-0", "version-1", "version-2", "version-3"],
+                    ["version-1"],
+                    ["version-3"],
                     ["point-0"],
-                    ["point-1"],
+                    ["point-1", "version-2"],
                     ["point-2"],
-                    ["point-3"],
+                    ["hub"],
+                    ["hub"],
                     [],
                 ],
                 "notes": [
-                    "[TITLE] Last, the ROC curve of the same candidate, on its ninety validation "
-                    "days, where the gate decides: four thousand four hundred and ten rows. ROC "
-                    "means Receiver Operating Characteristic.",
-                    "[CHART AXES] Up means more rainy days caught. Right means more dry days "
-                    "wrongly flagged as rain.",
-                    "[EACH POINT (bullet 1) + DOTS AND TABLE] Each point is one cut-off between "
-                    "rain and no rain. At zero point three, we catch eighty-six percent of rainy "
-                    "days, but flag half of the dry days; at zero point seven, only forty-four "
-                    "percent, for ten percent false alarms.",
-                    "[AREA (bullet 2) + DIAGONAL] The area under the curve is the ROC-AUC: zero "
-                    "point seven eight, the validation bar of my previous slide. The dashed "
-                    "diagonal is a model with no skill, area zero point five; always answering no "
-                    "is its bottom-left corner.",
-                    "[OUR CUT-OFF (bullet 3)] We use zero point five: sixty-seven percent caught, "
-                    "the recall the gate rejected. Accuracy would prefer zero point seven, "
-                    "seventy-seven percent instead of seventy-two, but would miss six hundred and "
-                    "sixty-two rainy days instead of three hundred and eighty-eight.",
-                    "[CUT-OFF 0.42 (bullet 4) + TABLE] The highest cut-off that meets our recall "
-                    "rule is zero point four two: seventy-five percent caught here, seventy-nine "
-                    "on the test days, for a third of dry days flagged. A cut-off does not change "
-                    "the ROC-AUC, so the second rule still needs the fix I mentioned: on the same "
-                    "window, this candidate beats the champion.",
-                    "[NEXT: THOMAS] So the gate decides which model our users get. Thomas will "
-                    "now show how we serve it.",
+                    "[TITLE] Tracking tells us what each model is. The registry decides which "
+                    "model our users get.",
+                    "[VERSION LANE] Every training run registers a new version of one model, "
+                    "weather-rainfall-classifier. A version never changes once it's written; only "
+                    "the aliases move. They work like named bookmarks.",
+                    "[@CHAMPION: BASELINE] The champion alias marks the version we serve. Our "
+                    "first champion is the baseline: a twelve-trial random search on Kaggle data, "
+                    "then retrained on all Kaggle rows. It could become champion directly only "
+                    "because no champion existed yet. That shortcut works once.",
+                    "[@CANDIDATE: NEWEST] Every new version automatically gets the candidate "
+                    "alias, and waits for the gate.",
+                    "[GATE (point 1)] Only the gate moves the champion, and all three conditions "
+                    "must hold. First, the release must be complete: clean git commit, the version "
+                    "really belongs to its run, and all its files are in MLflow. A model trained "
+                    "from uncommitted code is refused.",
+                    "[GATE (point 2) + REJECTED CANDIDATE] Second, validation recall of at least "
+                    "zero point seven five, because a missed rainy day costs more than a false "
+                    "alarm. Our latest candidate reached zero point six seven, so the gate "
+                    "rejected it and the champion stayed.",
+                    "[GATE (point 3)] Third, its validation ROC-AUC must beat the champion's. "
+                    "Known limit: the champion's zero point eight nine was measured on days it had "
+                    "already seen in training, and on an older window. That's a high bar. "
+                    "Re-scoring the champion on the candidate's window is our next fix.",
+                    "[FASTAPI BOX] The API never loads a file path. It asks MLflow for "
+                    "\"champion\" by name. It checks the alias on every prediction and reloads "
+                    "only when the version changes, so a promotion goes live without a restart. If "
+                    "MLflow is down, it serves a local copy of the model.",
+                    "[ROLLBACK] That also gives us rollback: we point the alias back at the "
+                    "previous version, and the next prediction uses it.",
+                    "[NEXT: THOMAS] So the gate decides which model our users get. Thomas will now "
+                    "show how we serve it.",
                 ],
             },
         ],
@@ -822,11 +893,13 @@ SECTIONS = [
                     "1. The green line under this slide comes from /health through Nginx.",
                     "2. Pick Sydney, click Predict from live weather. The API fetches "
                     "today's weather and answers Rain or No rain with a probability.",
-                    "3. The caption says Served by rain_classifier.joblib: no champion "
-                    "exists yet, as Jonathan explained.",
+                    "3. The caption names the champion that answered, as Jonathan explained. "
+                    "If it says rain_classifier.joblib, MLflow is not reachable and the API "
+                    "fell back to its local copy.",
                     "4. MLflow on port 8080: experiment weather-rainfall-classifier, open "
                     "the latest run, show params, metrics and the dataset_sha256 and "
-                    "git_commit tags. Then Models: the versions and the candidate alias.",
+                    "git_commit tags. Then Models: the versions and the champion and "
+                    "candidate aliases.",
                     "5. Airflow on port 8081, user admin, password in airflow/.env: open "
                     "weather_pipeline and show the successful run executed on 25 Sep "
                     "(Airflow names it scheduled__2026-09-23) in the graph view.",
