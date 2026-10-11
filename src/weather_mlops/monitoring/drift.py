@@ -290,6 +290,42 @@ def log_monitoring_run(
         return None
 
 
+def report_artifact_uri(run_id: str, filename: str) -> str | None:
+    """S3 location of the report."""
+
+    try:
+        from mlflow.tracking import MlflowClient
+
+        client = MlflowClient(tracking_uri=settings.mlflow_tracking_uri)
+        root = client.get_run(run_id).info.artifact_uri
+    except Exception:  
+        return None
+    root = root.replace("mlflow-artifacts:", settings.mlflow_artifact_destination.rstrip("/"), 1)
+    return f"{root}/evidently/{filename}"
+
+
+def upload_report_copy(html_path: Path, *, client: Any | None = None) -> str | None:
+    """Overwrite the latest evidently report."""
+
+    if client is None and not (settings.supabase_url and settings.supabase_key):
+        return None
+    from weather_mlops.data.database import get_supabase_client
+
+    bucket = settings.supabase_mlflow_bucket
+    key = f"evidently/latest/{html_path.name}"
+    try:
+        storage = (client or get_supabase_client()).storage.from_(bucket)
+        storage.upload(
+            key,
+            html_path.read_bytes(),
+            {"content-type": "text/html", "upsert": "true"},
+        )
+    except Exception as exc: 
+        print(f"Could not upload the report copy ({exc}).")
+        return None
+    return f"s3://{bucket}/{key}"
+
+
 def load_serving_feature_rows(client: Any | None = None) -> list[dict[str, Any]]:
     from weather_mlops.data.database import get_supabase_client
 
@@ -377,6 +413,10 @@ def run_drift_job(
         reference_path=path,
         html_path=html_path,
     )
+    # point at this run because the nightly file always has the same name. 
+    report_uri = report_artifact_uri(mlflow_run_id, html_path.name) if mlflow_run_id else None
+    summary["report_html_path"] = report_uri or str(html_path)
+    report_copy_uri = upload_report_copy(html_path, client=catalog_client)
 
     store_drift_report(
         {
@@ -389,7 +429,7 @@ def run_drift_job(
                 "column_metrics": summary["column_metrics"],
                 "share": summary["share"],
             },
-            "report_html_path": str(html_path),
+            "report_html_path": summary["report_html_path"],
             "mlflow_run_id": mlflow_run_id,
         },
         client=catalog_client,
@@ -407,7 +447,12 @@ def run_drift_job(
             client=catalog_client,
         )
 
-    result = {"feature_drift": summary, "performance": performance, "mlflow_run_id": mlflow_run_id}
+    result = {
+        "feature_drift": summary,
+        "performance": performance,
+        "mlflow_run_id": mlflow_run_id,
+        "report_copy_uri": report_copy_uri,
+    }
     if settings.pushgateway_url:
         from weather_mlops.monitoring.metrics import push_monitoring_metrics
 

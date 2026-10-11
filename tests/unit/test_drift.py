@@ -318,3 +318,156 @@ def test_serving_model_tags_without_a_champion() -> None:
             raise LookupError("alias not found")
 
     assert drift.serving_model_tags(EmptyRegistry()) == {"model_alias": "none"}
+
+
+class _FakeStorage:
+    def __init__(self, fail: bool = False) -> None:
+        self.fail = fail
+        self.bucket = None
+        self.uploads: list[tuple] = []
+
+    def from_(self, bucket: str):
+        self.bucket = bucket
+        return self
+
+    def upload(self, key, body, options):
+        if self.fail:
+            raise ConnectionError("storage is down")
+        self.uploads.append((self.bucket, key, body, options))
+
+
+class _FakeCatalog:
+    """Stands in for the Supabase client: records catalog rows and storage uploads."""
+
+    def __init__(self, fail_storage: bool = False) -> None:
+        self.rows: list[dict] = []
+        self.storage = _FakeStorage(fail=fail_storage)
+
+    def table(self, _name: str):
+        catalog = self
+
+        class Query:
+            def insert(self, row):
+                catalog.rows.append(row)
+                return self
+
+            def execute(self):
+                return self
+
+        return Query()
+
+
+def _fake_mlflow_client(artifact_uri: str):
+    from types import SimpleNamespace
+
+    class Client:
+        def __init__(self, tracking_uri=None):
+            pass
+
+        def get_run(self, run_id):
+            return SimpleNamespace(info=SimpleNamespace(artifact_uri=artifact_uri))
+
+    return Client
+
+
+def test_report_artifact_uri_maps_the_proxied_root_onto_the_bucket(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "mlflow.tracking.MlflowClient", _fake_mlflow_client("mlflow-artifacts:/2/run-1/artifacts")
+    )
+    monkeypatch.setattr(drift.settings, "mlflow_artifact_destination", "s3://weather-mlops-mlflow/")
+
+    uri = drift.report_artifact_uri("run-1", "feature_drift.html")
+
+    assert uri == "s3://weather-mlops-mlflow/2/run-1/artifacts/evidently/feature_drift.html"
+
+
+def test_report_artifact_uri_leaves_a_direct_artifact_root_alone(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "mlflow.tracking.MlflowClient", _fake_mlflow_client("s3://other-bucket/9/run-1/artifacts")
+    )
+
+    uri = drift.report_artifact_uri("run-1", "feature_drift.html")
+
+    assert uri == "s3://other-bucket/9/run-1/artifacts/evidently/feature_drift.html"
+
+
+def test_report_artifact_uri_is_none_when_mlflow_fails(monkeypatch) -> None:
+    class Broken:
+        def __init__(self, tracking_uri=None):
+            raise ConnectionError("mlflow is down")
+
+    monkeypatch.setattr("mlflow.tracking.MlflowClient", Broken)
+
+    assert drift.report_artifact_uri("run-1", "feature_drift.html") is None
+
+
+def test_upload_report_copy_overwrites_the_latest_key(tmp_path: Path, monkeypatch) -> None:
+    html = tmp_path / "feature_drift.html"
+    html.write_text("<html>report</html>")
+    client = _FakeCatalog()
+
+    uri = drift.upload_report_copy(html, client=client)
+
+    bucket = drift.settings.supabase_mlflow_bucket
+    assert uri == f"s3://{bucket}/evidently/latest/feature_drift.html"
+    assert client.storage.uploads == [
+        (
+            bucket,
+            "evidently/latest/feature_drift.html",
+            b"<html>report</html>",
+            {"content-type": "text/html", "upsert": "true"},
+        )
+    ]
+
+
+def test_upload_report_copy_survives_a_storage_outage(tmp_path: Path) -> None:
+    html = tmp_path / "feature_drift.html"
+    html.write_text("<html>report</html>")
+
+    assert drift.upload_report_copy(html, client=_FakeCatalog(fail_storage=True)) is None
+
+
+def test_upload_report_copy_is_skipped_without_supabase(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(drift.settings, "supabase_url", None)
+    monkeypatch.setattr(drift.settings, "supabase_key", None)
+
+    assert drift.upload_report_copy(tmp_path / "feature_drift.html") is None
+
+
+def _drift_job_inputs(tmp_path: Path, monkeypatch) -> Path:
+    reference_path = tmp_path / "X_train.csv"
+    _sample_frame().to_csv(reference_path, index=False)
+    monkeypatch.setattr(drift.settings, "evidently_reports_dir", tmp_path / "reports")
+    monkeypatch.setattr(drift.settings, "pushgateway_url", None)
+    return reference_path
+
+
+def test_drift_job_catalogs_the_runs_own_s3_report_and_a_stable_copy(
+    tmp_path: Path, monkeypatch
+) -> None:
+    reference_path = _drift_job_inputs(tmp_path, monkeypatch)
+    s3_report = "s3://weather-mlops-mlflow/2/run-1/artifacts/evidently/feature_drift.html"
+    monkeypatch.setattr(drift, "log_monitoring_run", lambda *a, **k: "run-1")
+    monkeypatch.setattr(drift, "report_artifact_uri", lambda run_id, name: s3_report)
+    catalog = _FakeCatalog()
+
+    result = drift.run_drift_job(
+        simulate=True, reference_path=reference_path, catalog_client=catalog
+    )
+
+    assert catalog.rows[0]["report_html_path"] == s3_report
+    assert catalog.rows[0]["mlflow_run_id"] == "run-1"
+    bucket = drift.settings.supabase_mlflow_bucket
+    assert result["report_copy_uri"] == f"s3://{bucket}/evidently/latest/feature_drift.html"
+    assert result["feature_drift"]["report_html_path"] == s3_report
+
+
+def test_drift_job_keeps_the_local_path_when_mlflow_is_off(tmp_path: Path, monkeypatch) -> None:
+    reference_path = _drift_job_inputs(tmp_path, monkeypatch)
+    monkeypatch.setattr(drift, "log_monitoring_run", lambda *a, **k: None)
+    catalog = _FakeCatalog()
+
+    drift.run_drift_job(simulate=True, reference_path=reference_path, catalog_client=catalog)
+
+    html = tmp_path / "reports" / "feature_drift.html"
+    assert catalog.rows[0]["report_html_path"] == str(html)
