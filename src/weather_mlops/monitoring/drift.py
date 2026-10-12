@@ -298,7 +298,7 @@ def report_artifact_uri(run_id: str, filename: str) -> str | None:
 
         client = MlflowClient(tracking_uri=settings.mlflow_tracking_uri)
         root = client.get_run(run_id).info.artifact_uri
-    except Exception:  
+    except Exception:
         return None
     root = root.replace("mlflow-artifacts:", settings.mlflow_artifact_destination.rstrip("/"), 1)
     return f"{root}/evidently/{filename}"
@@ -320,7 +320,7 @@ def upload_report_copy(html_path: Path, *, client: Any | None = None) -> str | N
             html_path.read_bytes(),
             {"content-type": "text/html", "upsert": "true"},
         )
-    except Exception as exc: 
+    except Exception as exc:
         print(f"Could not upload the report copy ({exc}).")
         return None
     return f"s3://{bucket}/{key}"
@@ -413,7 +413,7 @@ def run_drift_job(
         reference_path=path,
         html_path=html_path,
     )
-    # point at this run because the nightly file always has the same name. 
+    # point at this run because the nightly file always has the same name.
     report_uri = report_artifact_uri(mlflow_run_id, html_path.name) if mlflow_run_id else None
     summary["report_html_path"] = report_uri or str(html_path)
     report_copy_uri = upload_report_copy(html_path, client=catalog_client)

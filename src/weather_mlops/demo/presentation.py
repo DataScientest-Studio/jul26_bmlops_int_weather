@@ -630,7 +630,7 @@ SECTIONS = [
                     "already seen in training, and on an older window. That's a high bar. "
                     "Re-scoring the champion on the candidate's window is our next fix.",
                     "[FASTAPI BOX] The API never loads a file path. It asks MLflow for "
-                    "\"champion\" by name. It checks the alias on every prediction and reloads "
+                    '"champion" by name. It checks the alias on every prediction and reloads '
                     "only when the version changes, so a promotion goes live without a restart. If "
                     "MLflow is down, it serves a local copy of the model.",
                     "[ROLLBACK] That also gives us rollback: we point the alias back at the "
