@@ -727,7 +727,7 @@ SECTIONS = [
                     ["DAGs", "2"],
                     ["Schedule", "daily, 18:00 Berlin"],
                     ["Retrain trigger", "Grafana webhook, max 1/day"],
-                    ["Retries", "3, one minute apart"],
+                    ["Missed days", "caught up automatically"],
                 ],
                 "links": [
                     ["Airflow DAGs", "airflow/dags/weather_dag.py"],
@@ -749,8 +749,10 @@ SECTIONS = [
                     "stack must be up.",
                     "Airflow reaches Docker through a socket proxy that allows containers, "
                     "images and POST calls, and denies network management.",
-                    "Each task retries up to 3 times, one minute apart. No catch-up: after "
-                    "downtime only the latest missed run is executed.",
+                    "Each task retries up to 3 times, one minute apart.",
+                    "If Airflow was down, it catches up every missed day, one run at a "
+                    "time, and each run fetches the weather of its own day. For the days "
+                    "that were already missing, we ran a one-time backfill.",
                     "A retrained model only becomes champion if it "
                     "passes the recall gate and beats the current champion.",
                 ],
@@ -771,7 +773,7 @@ SECTIONS = [
                 "points": [],
                 "facts": [
                     ["CI jobs", "2"],
-                    ["Tests", "160 (6 live gateway)"],
+                    ["Tests", "229 (6 live gateway)"],
                     ["Images built", "7"],
                     ["Images on ghcr.io", "3"],
                 ],
@@ -792,8 +794,6 @@ SECTIONS = [
                     "preprocess and API images and uploads them to the GitHub Container "
                     "Registry. Any server can then download and start them without building "
                     "them itself.",
-                    "If asked: release runs in parallel with CI and tags only latest. "
-                    "Gating it on CI and tagging by commit is the next step.",
                 ],
             },
             {
