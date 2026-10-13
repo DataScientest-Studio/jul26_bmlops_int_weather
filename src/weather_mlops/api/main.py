@@ -40,6 +40,7 @@ from weather_mlops.models.predict import (
     predict,
 )
 from weather_mlops.models.training import train_model
+from weather_mlops.monitoring.drift import simulate_defense_drift
 from weather_mlops.security.vault import AUTH_SETTINGS, hydrate_runtime_secrets
 
 WindDirection = Literal[
@@ -202,6 +203,10 @@ class TrainInput(BaseModel):
     learning_rate: float = Field(default=0.05, gt=0, le=1)
     subsample: float = Field(default=0.9, gt=0, le=1)
     colsample_bytree: float = Field(default=0.9, gt=0, le=1)
+    track_run: bool = Field(
+        default=True,
+        description="Log and register this training run in MLflow.",
+    )
 
 
 class LivePredictionInput(LocationBase):
@@ -379,6 +384,21 @@ def train_endpoint(
     train_val_dict = {"train": metrics, "validation": val_metrics}
 
     return train_val_dict
+
+
+@app.post("/monitor/simulate")
+def simulate_monitor_endpoint(_: None = Depends(require_auth)):
+    """Run a synthetic drift check and arm the Grafana retrain gate.
+
+    Feature drift is computed by Evidently. The retrain flag is a simulated
+    recall failure so the defense can show the webhook path. The champion
+    alias is left where it is.
+    """
+
+    try:
+        return simulate_defense_drift()
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.post("/predict/live_data", response_model=PredictionOutput)

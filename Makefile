@@ -18,7 +18,7 @@ export GIT_COMMIT
 	build up serve api gateway streamlit mlflow down logs test test-gateway pipeline \
 	train validate evaluate compare baseline predict fetch-open-meteo backfill-open-meteo merge-raw preprocess \
 	load-db register-dataset airflow-up airflow-down airflow-reset monitoring \
-	supabase-migrate supabase-verify vault-put evidently
+	supabase-migrate supabase-verify vault-put evidently advance-models
 
 .PHONY: reconcile-model-catalog
 
@@ -64,8 +64,17 @@ serve:
 api: serve
 gateway: serve
 
-streamlit: serve
-	$(LOCAL_ENV) uv run python scripts/with_vault_env.py $(COMPOSE) --profile streamlit up -d --build --no-deps streamlit
+streamlit: monitoring airflow-up
+	$(LOCAL_ENV) uv run python scripts/with_vault_env.py --demo $(COMPOSE) --profile streamlit up -d --build --no-deps streamlit
+	@printf '%s\n' '' 'Services started.' '' \
+		'  Streamlit    Local URL: http://127.0.0.1:8501' \
+		'  API          Local URL: https://127.0.0.1' \
+		'  Grafana      Local URL: http://127.0.0.1:3000' \
+		'  Airflow      Local URL: http://127.0.0.1:8081' \
+		'  MLflow       Local URL: http://127.0.0.1:8080' \
+		'  Prometheus   Local URL: http://127.0.0.1:9090' \
+		'  Pushgateway  Local URL: http://127.0.0.1:9091' \
+		''
 
 mlflow:
 	$(LOCAL_ENV) uv run python scripts/with_vault_env.py --s3 $(COMPOSE) --profile mlflow up -d --build --wait mlflow
@@ -74,6 +83,7 @@ monitoring: serve
 	$(LOCAL_ENV) uv run python scripts/with_vault_env.py --monitoring $(COMPOSE) --profile monitoring up -d prometheus pushgateway grafana
 
 down:
+	@if [ -f airflow/.env ]; then $(MAKE) airflow-down; fi
 	$(COMPOSE) --profile gateway --profile streamlit --profile test --profile mlflow --profile monitoring down --remove-orphans
 
 logs:
@@ -125,10 +135,18 @@ fetch-open-meteo:
 	@test -n "$(OPEN_METEO_DATE)" || (echo "Usage: make fetch-open-meteo OPEN_METEO_DATE=2026-09-01"; exit 1)
 	$(COMPOSE) run --rm --no-deps -e OPEN_METEO_DATE="$(OPEN_METEO_DATE)" --entrypoint python ingestion scripts/fetch_open_meteo_daily.py --date "$(OPEN_METEO_DATE)"
 
-# Historical Australia-only gap fill. Resumes when both chunk JSON and CSV exist.
-# Override ARGS, for example: ARGS='--end 2025-12-31 --chunk-days 30'.
+# Historical Australia-only gap fill from the day after Kaggle through today.
+# Finished chunks are skipped. A rate limit exits 75 after saving progress.
+# Re-run the same command to continue. Keep chunk size and location batch size stable.
+# Example: ARGS='--max-requests 4 --chunk-days 30'.
 backfill-open-meteo:
 	$(COMPOSE) run --rm --no-deps --build --entrypoint python ingestion scripts/backfill_open_meteo.py $(ARGS)
+
+# Next completed Open-Meteo chunk: Evidently versus X_train, score the production
+# model, and fit a local candidate under models/continual. The champion is unchanged.
+# Re-run for the following chunk. ARGS='--no-retrain' skips the candidate fit.
+advance-models:
+	$(LOCAL_ENV) uv run python -m weather_mlops.models.continual $(ARGS)
 
 merge-raw:
 	$(COMPOSE) run --rm --no-deps --entrypoint python ingestion -m weather_mlops.data.merge_raw

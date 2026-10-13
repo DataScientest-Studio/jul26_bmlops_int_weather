@@ -46,6 +46,15 @@ class OpenMeteoError(RuntimeError):
     """Raised when Open-Meteo rejects or fails a request."""
 
 
+class OpenMeteoRateLimitError(OpenMeteoError):
+    """Raised when the archive quota is exhausted and retrying will not help."""
+
+    def __init__(self, message: str, *, scope: str, retry_after: float | None = None) -> None:
+        super().__init__(message)
+        self.scope = scope
+        self.retry_after = retry_after
+
+
 @dataclass(frozen=True)
 class WeatherLocation:
     location: str
@@ -222,8 +231,20 @@ def _get_json(
                 return payload
             raise OpenMeteoError("Open-Meteo returned an unexpected JSON response shape.")
 
-        if response.status_code == 429 and retry < RATE_LIMIT_RETRIES:
+        if response.status_code == 429:
+            detail = _response_detail(response)
+            scope = _rate_limit_scope(detail)
             wait_seconds = _rate_limit_wait_seconds(response)
+            # Hourly and daily quotas do not clear during a short retry loop.
+            if scope in {"hour", "day"} or retry >= RATE_LIMIT_RETRIES:
+                window = {"hour": "hourly", "day": "daily"}.get(scope, "request")
+                print(f"Open-Meteo {window} rate limit reached for endpoint '{endpoint}'.")
+                raise OpenMeteoRateLimitError(
+                    f"Open-Meteo request failed for endpoint '{endpoint}' "
+                    f"(HTTP 429). Response: {detail}",
+                    scope=scope,
+                    retry_after=wait_seconds,
+                )
             print(
                 "Open-Meteo rate limit reached; retrying "
                 f"endpoint '{endpoint}' in {wait_seconds:g}s "
@@ -239,6 +260,19 @@ def _get_json(
         )
 
     raise AssertionError("Rate-limit retry loop exited unexpectedly.")
+
+
+def _rate_limit_scope(detail: str) -> str:
+    """Classify an Open-Meteo 429 body so a daily quota is not retried for minutes."""
+
+    lowered = detail.lower()
+    if "daily" in lowered:
+        return "day"
+    if "hourly" in lowered:
+        return "hour"
+    if "minute" in lowered:
+        return "minute"
+    return "unknown"
 
 
 def _rate_limit_wait_seconds(response: requests.Response) -> float:

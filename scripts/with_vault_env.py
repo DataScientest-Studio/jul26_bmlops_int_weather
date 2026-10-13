@@ -1,6 +1,7 @@
 """Hydrate Vault secrets into the environment, then exec the remaining argv.
 
-`make streamlit` copies basic auth into the demo container.
+`make streamlit` copies basic auth into the demo container, and Airflow
+credentials too when Vault has them, so the demo can color the DAG.
 `make mlflow` copies S3 keys so the tracking server can write artifacts to
 `s3://weather-mlops-mlflow`. Neither container receives SUPABASE_KEY.
 
@@ -23,15 +24,20 @@ def main() -> None:
     args = sys.argv[1:]
     hydrate_s3 = False
     hydrate_monitoring = False
+    hydrate_demo = False
     if args and args[0] == "--s3":
         hydrate_s3 = True
         args = args[1:]
     elif args and args[0] == "--monitoring":
         hydrate_monitoring = True
         args = args[1:]
+    elif args and args[0] == "--demo":
+        hydrate_demo = True
+        args = args[1:]
     if not args:
         raise SystemExit(
-            "Usage: python scripts/with_vault_env.py [--s3|--monitoring] <command> [args...]"
+            "Usage: python scripts/with_vault_env.py "
+            "[--s3|--monitoring|--demo] <command> [args...]"
         )
 
     if hydrate_s3:
@@ -51,6 +57,11 @@ def main() -> None:
             names=tuple(name for name, _attr in AUTH_SETTINGS),
             required=("API_AUTH_USER", "API_AUTH_PASSWORD"),
         )
+        if hydrate_demo:
+            hydrate_runtime_secrets(
+                names=tuple(name for name, _attr in MONITORING_SETTINGS),
+                required=(),
+            )
     os.execvp(args[0], args)
 
 

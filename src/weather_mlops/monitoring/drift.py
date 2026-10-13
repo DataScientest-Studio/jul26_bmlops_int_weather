@@ -20,6 +20,7 @@ DRIFT_COLUMNS = (
 )
 PSI_THRESHOLD = 0.1
 DRIFT_SHARE = 0.3
+CHAMPION_AUC_DROP = 0.02
 
 
 def explode_prediction_features(rows: list[dict[str, Any]]) -> pd.DataFrame:
@@ -165,17 +166,59 @@ def performance_decision(
     metrics: dict[str, float],
     champion_roc_auc: float | None = None,
 ) -> dict[str, Any]:
+    """Request retraining when delayed recall or ROC-AUC falls behind the champion.
+
+    Recall uses the promotion guardrail. ROC-AUC requests a retrain only when it
+    is more than 0.02 below the serving champion's validation score. With no
+    champion score available, the gate stays on recall.
+    """
+
     recall = float(metrics.get("recall") or 0.0)
     roc_auc = float(metrics.get("roc_auc") or 0.0)
-    retrain = recall < settings.mlflow_min_recall
+    recall_failed = recall < settings.mlflow_min_recall
+    auc_failed = False
     if champion_roc_auc is not None:
-        retrain = retrain or roc_auc < float(champion_roc_auc) - 0.02
+        auc_failed = roc_auc < float(champion_roc_auc) - CHAMPION_AUC_DROP
     return {
         "scope": "performance",
-        "retrain": retrain,
+        "retrain": recall_failed or auc_failed,
+        "recall_failed": recall_failed,
+        "auc_failed": auc_failed,
         "metrics": metrics,
         "champion_roc_auc": champion_roc_auc,
     }
+
+
+def champion_validation_roc_auc(client: Any) -> float | None:
+    """Read validation ROC-AUC from the model version that holds the champion alias."""
+
+    version = client.get_model_version_by_alias(
+        settings.mlflow_model_name,
+        settings.mlflow_champion_alias,
+    )
+    score = client.get_run(version.run_id).data.metrics.get(settings.mlflow_primary_metric)
+    if score is None:
+        return None
+    return float(score)
+
+
+def load_champion_roc_auc() -> float | None:
+    """Return the champion score, or None when the registry cannot be read.
+
+    A missing score leaves the nightly job on the recall gate instead of failing
+    the DAG.
+    """
+
+    if not settings.mlflow_tracking_uri:
+        return None
+    try:
+        from mlflow.tracking import MlflowClient
+
+        client = MlflowClient(tracking_uri=settings.mlflow_tracking_uri)
+        return champion_validation_roc_auc(client)
+    except Exception as exc:
+        print(f"Champion ROC-AUC unavailable; performance gate uses recall only. {exc}")
+        return None
 
 
 def store_drift_report(
@@ -220,6 +263,8 @@ def monitoring_metrics(
         metrics["retrain_requested"] = float(bool(performance.get("retrain")))
         for name, value in (performance.get("metrics") or {}).items():
             metrics[f"delayed_{name}"] = float(value)
+        if performance.get("champion_roc_auc") is not None:
+            metrics["champion_roc_auc"] = float(performance["champion_roc_auc"])
     return metrics
 
 
@@ -365,6 +410,8 @@ def run_drift_job(
     catalog_client: Any | None = None,
     reference_path: Path | None = None,
     current_path: Path | None = None,
+    performance_override: dict[str, Any] | None = None,
+    push: bool = True,
 ) -> dict[str, Any]:
     path = Path(reference_path or settings.x_train_path)
     if not path.exists():
@@ -397,16 +444,17 @@ def run_drift_job(
     summary["current_dataset"] = current_label
     summary["reference_dataset"] = str(path)
 
-    performance = None
-    if not simulate:
+    performance = performance_override
+    if performance is None and not simulate:
         metrics = delayed_performance(serving_rows)
         if metrics is not None:
-            performance = performance_decision(metrics)
+            champion_roc_auc = load_champion_roc_auc()
+            performance = performance_decision(metrics, champion_roc_auc=champion_roc_auc)
             performance["labeled_predictions"] = sum(
                 row.get("observed_label") in {"Yes", "No"} for row in serving_rows
             )
 
-    # MLflow first, so both Postgres rows can point at the run that holds the report
+    # MLflow first, so both catalog rows point to the report-holding monitoring run.
     mlflow_run_id = log_monitoring_run(
         summary,
         performance,
@@ -417,47 +465,89 @@ def run_drift_job(
     report_uri = report_artifact_uri(mlflow_run_id, html_path.name) if mlflow_run_id else None
     summary["report_html_path"] = report_uri or str(html_path)
     report_copy_uri = upload_report_copy(html_path, client=catalog_client)
-
+    report_row = {
+        "reference_dataset": summary["reference_dataset"],
+        "current_dataset": current_label,
+        "report_html_path": summary["report_html_path"],
+        "mlflow_run_id": mlflow_run_id,
+    }
     store_drift_report(
         {
+            **report_row,
             "scope": "feature_drift",
-            "reference_dataset": summary["reference_dataset"],
-            "current_dataset": current_label,
             "drift_detected": summary["drift_detected"],
             "metrics": {
                 "drifted_columns": summary["drifted_columns"],
                 "column_metrics": summary["column_metrics"],
                 "share": summary["share"],
             },
-            "report_html_path": summary["report_html_path"],
-            "mlflow_run_id": mlflow_run_id,
         },
         client=catalog_client,
     )
-    if performance is not None:
+    if performance is not None and not performance.get("simulated"):
         store_drift_report(
             {
+                **report_row,
                 "scope": "performance",
-                "reference_dataset": summary["reference_dataset"],
-                "current_dataset": current_label,
                 "drift_detected": performance["retrain"],
                 "metrics": performance,
-                "mlflow_run_id": mlflow_run_id,
             },
             client=catalog_client,
         )
-
     result = {
         "feature_drift": summary,
         "performance": performance,
         "mlflow_run_id": mlflow_run_id,
         "report_copy_uri": report_copy_uri,
     }
-    if settings.pushgateway_url:
+    if push and settings.pushgateway_url:
         from weather_mlops.monitoring.metrics import push_monitoring_metrics
 
         push_monitoring_metrics(result, gateway_url=settings.pushgateway_url)
     return result
+
+
+def simulate_defense_drift() -> dict[str, Any]:
+    """Run the synthetic feature shift and arm the delayed-performance gate.
+
+    The feature report is real Evidently output. The retrain flag is a labeled
+    simulation: recall 0.40, so Grafana's webhook can start ``weather_retrain``.
+    This does not train a model or move the champion alias. A Pushgateway
+    outage is reported and does not discard the drift result.
+    """
+
+    performance = performance_decision(
+        {"recall": 0.40, "roc_auc": 0.80},
+        champion_roc_auc=load_champion_roc_auc(),
+    )
+    performance["simulated"] = True
+    performance["labeled_predictions"] = 0
+    result = run_drift_job(
+        simulate=True,
+        performance_override=performance,
+        push=False,
+    )
+    push_error = None
+    if settings.pushgateway_url:
+        try:
+            from weather_mlops.monitoring.metrics import push_monitoring_metrics
+
+            push_monitoring_metrics(result, gateway_url=settings.pushgateway_url)
+        except Exception as exc:
+            push_error = str(exc)
+    feature = result["feature_drift"]
+    return {
+        "drift_detected": bool(feature.get("drift_detected")),
+        "drifted_columns": list(feature.get("drifted_columns") or []),
+        "share": float(feature.get("share") or 0),
+        "retrain": bool(performance["retrain"]),
+        "recall_failed": bool(performance["recall_failed"]),
+        "auc_failed": bool(performance["auc_failed"]),
+        "champion_roc_auc": performance.get("champion_roc_auc"),
+        "simulated": True,
+        "mlflow_run_id": result.get("mlflow_run_id"),
+        "push_error": push_error,
+    }
 
 
 def parse_args() -> argparse.Namespace:

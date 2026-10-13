@@ -1,4 +1,4 @@
-"""Copy for the five-minute defense deck."""
+"""Copy for the defense demo."""
 
 from dataclasses import dataclass
 
@@ -13,32 +13,30 @@ class Slide:
 
 SLIDES: tuple[Slide, ...] = (
     Slide(
-        id="architecture",
-        title="One loop",
-        kicker="Architecture",
-        notes=(
-            "Open-Meteo in, FastAPI out. Nginx is the public edge.",
-            "Airflow will later POST /train. It is not in Compose yet.",
-            "DVC is only how a developer pulls files. Production lineage is Postgres.",
-        ),
-    ),
-    Slide(
-        id="stores",
-        title="Two buckets, one catalog",
-        kicker="Data",
-        notes=(
-            "weather-mlops-dvc holds datasets. weather-mlops-mlflow holds MLflow artifacts.",
-            "dataset_versions names each snapshot by sha256.",
-            "Vault holds S3 keys and API basic auth. Streamlit never sees the service-role key.",
-        ),
-    ),
-    Slide(
         id="live",
         title="Will it rain tomorrow?",
-        kicker="Demo",
+        kicker="Live prediction",
         notes=(
+            "The live outcome stays on screen: a clear Yes or No and the rain probability.",
             "This page calls Nginx, which proxies /health and /predict/live_data.",
             "It uses basic auth hydrated from Vault. It never loads SUPABASE_KEY.",
+            "The two small panels below are the real Grafana request-rate and latency "
+            "panels for the last 5 minutes. They refresh every 5 seconds.",
+        ),
+    ),
+    Slide(
+        id="train",
+        title="Model training",
+        kicker="Model training",
+        notes=(
+            "Click Train model now. This sends one authenticated POST /train request through "
+            "the same Nginx gateway as the prediction.",
+            "While it runs, the page shows a training state instead of asking us to explain "
+            "background monitoring charts.",
+            "The API returns the training and validation metrics directly. Point to validation "
+            "Recall, ROC-AUC, and Accuracy.",
+            "The result is the visible proof: a real model was fitted and evaluated during "
+            "the demo.",
         ),
     ),
 )

@@ -1,5 +1,8 @@
 """build the html of each slide of the defense deck."""
 
+import base64
+from pathlib import Path
+
 from weather_mlops.demo.presentation import (
     STAGES,
     TEAM,
@@ -238,11 +241,83 @@ def make_registry(slide):
     )
 
 
+IMAGE_DIR = Path(__file__).with_name("images")
+
+# Photographs and official marks. Credits stay with the files:
+# kubernetes.svg is the CNCF Kubernetes icon.
+# jev.png is the TypeSafe mark from typesafe.ai.
+# canary.jpg, forecast.jpg and shadow.jpg are Wikimedia Commons, CC0.
+# threshold.jpg is Wikimedia Commons, File:Pressure Gauge.jpg,
+# by In Transit, CC BY-SA 4.0.
+CARD_IMAGES = {
+    "kubernetes": ("kubernetes.svg", "Kubernetes", "logo", "center"),
+    "models": ("jev.png", "Jev", "logo", "center"),
+    "canary": ("canary.jpg", "Canary", "photo", "center"),
+    "forecast": ("forecast.jpg", "Clouds", "photo", "center 28%"),
+    "threshold": ("threshold.jpg", "Pressure gauge", "photo", "center 32%"),
+    "rollback": ("shadow.jpg", "Shadows on a pavement", "photo", "center 70%"),
+}
+
+
+def image_data_uri(filename):
+    path = IMAGE_DIR / filename
+    if path.suffix == ".svg":
+        mime = "image/svg+xml"
+    elif path.suffix == ".png":
+        mime = "image/png"
+    else:
+        mime = "image/jpeg"
+    encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+    return f"data:{mime};base64,{encoded}"
+
+
+def card_image(key):
+    filename, alt, kind, position = CARD_IMAGES[key]
+    return (
+        f'<img class="future-photo is-{kind}" alt="{alt}" '
+        f'style="object-position: {position}" '
+        f'src="{image_data_uri(filename)}">'
+    )
+
+
+def make_demo_hero(slide):
+    return (
+        '<div class="demo-hero">'
+        '<img class="demo-hero-image" alt="Weather forecast dashboard illustration" '
+        'data-asset="live_demo_hero.png" '
+        f'src="{image_data_uri("live_demo_hero.png")}">'
+        '<div class="demo-hero-overlay">'
+        f'<h2 class="demo-hero-title" data-focus="title">{slide["title"]}</h2>'
+        "</div></div>"
+    )
+
+
+def make_future(slide):
+    cards = ""
+    for number, card in enumerate(slide["cards"]):
+        is_lead = number < 2
+        card_class = "future-card is-lead" if is_lead else "future-card is-compact"
+        index = f'<span class="future-index" aria-hidden="true">0{number + 1}</span>'
+        visual = f"{index}{card_image(card['icon'])}" if is_lead else index
+        cards = cards + (
+            f'<article class="{card_class}" data-focus="card-{number}">'
+            f"{visual}"
+            f'<p class="future-name">{card["title"]}</p>'
+            f'<p class="future-text">{card["text"]}</p>'
+            "</article>"
+        )
+    return make_title(slide) + f'<div class="future-grid">{cards}</div>'
+
+
 def make_closing(slide):
     return (
-        '<div class="cover">'
-        f'<h2 class="cover-title">{slide["title"]}</h2>'
-        '<p class="cover-lede">All nine lifecycle stages are in place.</p>'
+        '<div class="questions-closing">'
+        '<div class="questions-copy">'
+        '<p class="questions-kicker">Weather MLOps</p>'
+        f'<h2 class="questions-title" data-focus="title">{slide["title"]}</h2>'
+        '<p class="questions-thanks">Thank you</p>'
+        "</div>"
+        '<span class="questions-mark" aria-hidden="true">?</span>'
         "</div>"
     )
 
@@ -263,8 +338,12 @@ def make_body(slide):
         return make_tracking(slide)
     elif layout == "registry":
         return make_registry(slide)
+    elif layout == "demo-hero":
+        return make_demo_hero(slide)
     elif layout == "script":
         return make_title(slide) + make_points(slide, tag="ol")
+    elif layout == "future":
+        return make_future(slide)
     elif layout == "closing":
         return make_closing(slide)
     else:

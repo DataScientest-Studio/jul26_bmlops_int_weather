@@ -88,6 +88,8 @@ def test_makefile_exposes_resumable_open_meteo_backfill() -> None:
 
     assert "\nbackfill-open-meteo:" in makefile
     assert "scripts/backfill_open_meteo.py $(ARGS)" in makefile
+    assert "\nadvance-models:" in makefile
+    assert "weather_mlops.models.continual $(ARGS)" in makefile
 
 
 def test_dvc_predict_sample_uses_the_module_cli():

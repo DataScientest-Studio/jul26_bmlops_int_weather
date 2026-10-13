@@ -471,3 +471,123 @@ def test_drift_job_keeps_the_local_path_when_mlflow_is_off(tmp_path: Path, monke
 
     html = tmp_path / "reports" / "feature_drift.html"
     assert catalog.rows[0]["report_html_path"] == str(html)
+
+def test_auc_drop_below_champion_recommends_retrain() -> None:
+    decision = drift.performance_decision(
+        {"recall": 0.80, "roc_auc": 0.84},
+        champion_roc_auc=0.88,
+    )
+
+    assert decision["retrain"] is True
+    assert decision["recall_failed"] is False
+    assert decision["auc_failed"] is True
+
+def test_champion_validation_roc_auc_reads_the_alias() -> None:
+    class Version:
+        run_id = "champ-run"
+
+    class Run:
+        class data:
+            metrics = {"validation_roc_auc": 0.871}
+
+    class Client:
+        def get_model_version_by_alias(self, name: str, alias: str) -> Version:
+            assert name == "weather-rainfall-classifier"
+            assert alias == "champion"
+            return Version()
+
+        def get_run(self, run_id: str) -> Run:
+            assert run_id == "champ-run"
+            return Run()
+
+    assert drift.champion_validation_roc_auc(Client()) == 0.871
+
+def test_live_gate_compares_delayed_auc_with_champion(tmp_path: Path, monkeypatch) -> None:
+    reference_path = tmp_path / "X_train.csv"
+    _sample_frame().to_csv(reference_path, index=False)
+    monkeypatch.setattr(drift.settings, "evidently_reports_dir", tmp_path / "reports")
+    monkeypatch.setattr(drift.settings, "supabase_url", "https://example.supabase.co")
+    monkeypatch.setattr(drift.settings, "supabase_key", "key")
+    monkeypatch.setattr(drift.settings, "pushgateway_url", None)
+    monkeypatch.setattr(drift.settings, "mlflow_tracking_uri", "http://mlflow:8080")
+
+    rows = [
+        {
+            "features": {"Location": "Sydney", "Humidity3pm": 40.0},
+            "observed_label": "No",
+            "predicted_class": "No",
+            "probability": 0.2,
+        }
+    ]
+    stored: list[dict] = []
+    monkeypatch.setattr(drift, "load_serving_feature_rows", lambda client=None: rows)
+    monkeypatch.setattr(
+        drift, "delayed_performance", lambda _rows: {"recall": 0.80, "roc_auc": 0.80}
+    )
+    monkeypatch.setattr(drift, "load_champion_roc_auc", lambda: 0.88)
+    monkeypatch.setattr(
+        drift, "store_drift_report", lambda payload, client=None: stored.append(payload)
+    )
+    monkeypatch.setattr(
+        drift,
+        "log_monitoring_run",
+        lambda feature, performance, *, reference_path, html_path: "run-abc",
+    )
+    monkeypatch.setattr(
+        drift,
+        "report_artifact_uri",
+        lambda run_id, filename: f"s3://weather-mlops-mlflow/evidently/{filename}",
+    )
+    monkeypatch.setattr(
+        drift,
+        "upload_report_copy",
+        lambda html_path, client=None: "s3://weather-mlops-mlflow/evidently/latest/feature_drift.html",
+    )
+
+    result = drift.run_drift_job(reference_path=reference_path)
+
+    assert result["performance"]["retrain"] is True
+    assert result["performance"]["auc_failed"] is True
+    assert result["performance"]["champion_roc_auc"] == 0.88
+    assert result["mlflow_run_id"] == "run-abc"
+    assert {row["scope"] for row in stored} == {"feature_drift", "performance"}
+    assert all(row["mlflow_run_id"] == "run-abc" for row in stored)
+
+def test_simulate_defense_drift_arms_the_gate_without_training(monkeypatch) -> None:
+    captured = {}
+
+    def fake_job(**kwargs):
+        captured.update(kwargs)
+        return {
+            "feature_drift": {
+                "drift_detected": True,
+                "drifted_columns": ["Humidity3pm", "Location"],
+                "share": 0.4,
+            },
+            "performance": kwargs["performance_override"],
+            "mlflow_run_id": "run-1",
+        }
+
+    pushed = {}
+
+    def fake_push(result, *, gateway_url):
+        pushed["retrain"] = result["performance"]["retrain"]
+        pushed["url"] = gateway_url
+
+    monkeypatch.setattr(drift, "run_drift_job", fake_job)
+    monkeypatch.setattr(drift, "load_champion_roc_auc", lambda: 0.88)
+    monkeypatch.setattr(drift.settings, "pushgateway_url", "http://pushgateway:9091")
+    monkeypatch.setattr(
+        "weather_mlops.monitoring.metrics.push_monitoring_metrics",
+        fake_push,
+    )
+
+    summary = drift.simulate_defense_drift()
+
+    assert captured["simulate"] is True
+    assert captured["push"] is False
+    assert captured["performance_override"]["simulated"] is True
+    assert summary["retrain"] is True
+    assert summary["drifted_columns"] == ["Humidity3pm", "Location"]
+    assert summary["mlflow_run_id"] == "run-1"
+    assert pushed == {"retrain": True, "url": "http://pushgateway:9091"}

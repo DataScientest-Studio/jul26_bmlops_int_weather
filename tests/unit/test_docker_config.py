@@ -50,8 +50,24 @@ def test_demo_does_not_receive_the_service_role_key():
 
     assert "SUPABASE_KEY" not in env
     assert env["DEMO_API_URL"] == "https://nginx"
+    assert env["PROMETHEUS_URL"] == "http://prometheus:9090"
+    assert env["GRAFANA_EMBED_ENABLED"] == "true"
     assert env["API_AUTH_USER"] == "${API_AUTH_USER:-}"
     assert env["API_AUTH_PASSWORD"] == "${API_AUTH_PASSWORD:-}"
+    assert env["AIRFLOW_API_URL"] == "http://airflow-webserver:8080"
+    assert env["AIRFLOW_API_USER"] == "${AIRFLOW_API_USER:-}"
+    assert env["AIRFLOW_API_PASSWORD"] == "${AIRFLOW_API_PASSWORD:-}"
+    assert load_services()["api"]["environment"]["PUSHGATEWAY_URL"] == (
+        "${PUSHGATEWAY_URL:-http://pushgateway:9091}"
+    )
+
+
+def test_grafana_allows_the_local_streamlit_demo_to_embed_its_dashboards():
+    env = load_services()["grafana"]["environment"]
+
+    assert env["GF_SECURITY_ALLOW_EMBEDDING"] == "true"
+    assert env["GF_AUTH_ANONYMOUS_ENABLED"] == "true"
+    assert env["GF_AUTH_ANONYMOUS_ORG_ROLE"] == "Viewer"
 
 
 def test_preprocess_runs_after_ingestion():
@@ -131,6 +147,7 @@ def test_api_only_receives_supabase_bootstrap_env():
         "SUPABASE_KEY",
         "GIT_COMMIT",
         "MLFLOW_TRACKING_URI",
+        "PUSHGATEWAY_URL",
         "API_AUTH_USER",
         "API_AUTH_PASSWORD",
     } == set(env)

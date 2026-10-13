@@ -133,6 +133,152 @@
     font-weight: 600;
 }
 
+/* Live demo: one visual stage with speaker-led, editable cues. */
+.layout-demo-hero .slide-body {
+    padding-top: 0.7rem;
+}
+
+.demo-hero {
+    position: relative;
+    flex: 1;
+    overflow: hidden;
+    background: var(--ink);
+    border: 1px solid var(--line);
+}
+
+.demo-hero-image {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.demo-hero-overlay {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    width: 46%;
+    height: 100%;
+    padding: 2.7rem 2.2rem;
+    box-sizing: border-box;
+    background: linear-gradient(90deg, rgba(246, 248, 250, 0.98) 0%, rgba(246, 248, 250, 0.94) 82%, rgba(246, 248, 250, 0) 100%);
+}
+
+.slide h2.demo-hero-title {
+    font-family: "Source Serif 4", Georgia, serif !important;
+    font-size: clamp(2.2rem, 3.9vw, 4.1rem) !important;
+    font-weight: 600 !important;
+    line-height: 1 !important;
+    color: var(--ink) !important;
+    margin: 0 0 1.6rem !important;
+}
+
+/* Future work: two lead themes and four compact, readable follow-ons. */
+.layout-future .slide-body {
+    padding-top: 0.4rem;
+}
+
+.layout-future h2.slide-title {
+    margin-bottom: 0.55rem !important;
+}
+
+.future-grid {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-rows: 1.25fr 0.9fr;
+    gap: 0.75rem;
+}
+
+.future-card {
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    background: #FFFFFF;
+    border: 1px solid var(--line);
+    border-top: 3px solid var(--rain);
+    padding: 0.65rem 0.8rem 0.75rem;
+}
+
+.future-card.is-lead {
+    grid-column: span 2;
+    justify-content: flex-end;
+    overflow: hidden;
+    padding: 1.1rem 1.2rem;
+}
+
+.future-card.is-compact {
+    grid-column: span 2;
+    justify-content: space-between;
+}
+
+.future-photo {
+    display: block;
+    margin: 0 0 0.45rem;
+    background: #FFFFFF;
+}
+
+.future-photo.is-logo {
+    position: absolute;
+    top: 1.05rem;
+    right: 1.25rem;
+    width: clamp(4.4rem, 7vw, 7.4rem);
+    height: clamp(4.4rem, 7vw, 7.4rem);
+    object-fit: contain;
+}
+
+.future-photo.is-photo {
+    width: 100%;
+    height: 4.2rem;
+    object-fit: cover;
+    border-radius: 2px;
+}
+
+.slide p.future-name {
+    font-size: clamp(1rem, 1.25vw, 1.15rem) !important;
+    font-weight: 600 !important;
+    line-height: 1.25 !important;
+    margin: 0 0 0.3rem !important;
+    color: var(--ink) !important;
+}
+
+.future-card.is-lead .future-name,
+.future-card.is-lead .future-text {
+    max-width: 70%;
+}
+
+.future-index {
+    display: block;
+    color: var(--rain);
+    font-family: "Source Serif 4", Georgia, serif;
+    font-size: clamp(1.8rem, 2.8vw, 3.2rem);
+    font-weight: 600;
+    line-height: 1;
+}
+
+.future-card.is-lead .future-index {
+    position: absolute;
+    top: 1rem;
+    left: 1.2rem;
+}
+
+.slide p.future-text {
+    font-size: clamp(0.88rem, 1.05vw, 1rem) !important;
+    line-height: 1.35 !important;
+    margin: 0 !important;
+    color: var(--ink) !important;
+}
+
+.slide p.future-credit {
+    margin: 0.35rem 0 0 !important;
+    font-size: 0.68rem !important;
+    line-height: 1.3 !important;
+    color: var(--muted) !important;
+}
+
 /* A single number carries the problem slide. */
 .hero {
     margin: 0 0 2rem;
@@ -441,6 +587,53 @@
     margin: 0;
 }
 
+/* Questions: a clear final beat, distinct from the cover slide. */
+.questions-closing {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    flex: 1;
+    min-height: 0;
+    border-top: 6px solid var(--eucalyptus);
+    border-bottom: 1px solid var(--line);
+}
+
+.questions-kicker {
+    margin: 0 0 0.8rem !important;
+    color: var(--eucalyptus) !important;
+    font-size: clamp(0.85rem, 1.2vw, 1.05rem) !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.slide h2.questions-title {
+    margin: 0 0 0.75rem !important;
+    color: var(--ink) !important;
+    font-family: "Source Serif 4", Georgia, serif !important;
+    font-size: clamp(3.2rem, 7vw, 6.6rem) !important;
+    font-weight: 600 !important;
+    line-height: 0.95 !important;
+}
+
+.questions-thanks {
+    margin: 0 !important;
+    color: var(--muted) !important;
+    font-size: clamp(1.1rem, 1.7vw, 1.5rem) !important;
+}
+
+.questions-mark {
+    align-self: stretch;
+    display: grid;
+    place-items: center;
+    padding: 0 8vw 0 3vw;
+    color: var(--rain);
+    font-family: "Source Serif 4", Georgia, serif;
+    font-size: clamp(8rem, 20vw, 18rem);
+    font-weight: 500;
+    line-height: 0.75;
+}
+
 /* Key figures next to the points. */
 .facts {
     border-collapse: collapse;
@@ -600,6 +793,28 @@
     .arch {
         grid-template-columns: 1fr;
         grid-template-areas: "train" "hub" "predict" "stores";
+    }
+
+    .future-grid {
+        grid-template-columns: 1fr;
+        grid-template-rows: none;
+    }
+
+    .future-card.is-lead {
+        grid-column: auto;
+    }
+
+    .future-card.is-compact {
+        grid-column: auto;
+    }
+
+    .demo-hero-overlay {
+        width: 65%;
+        padding: 1.5rem;
+    }
+
+    .questions-mark {
+        padding-right: 1.5rem;
     }
 
     .zones.run-zones {
