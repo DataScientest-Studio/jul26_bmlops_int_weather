@@ -36,8 +36,7 @@ def main() -> None:
         args = args[1:]
     if not args:
         raise SystemExit(
-            "Usage: python scripts/with_vault_env.py "
-            "[--s3|--monitoring|--demo] <command> [args...]"
+            "Usage: python scripts/with_vault_env.py [--s3|--monitoring|--demo] <command> [args...]"
         )
 
     if hydrate_s3:
