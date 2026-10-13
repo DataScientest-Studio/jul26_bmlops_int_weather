@@ -20,6 +20,15 @@ from weather_mlops.models.tracking import clear_mlflow_run_metadata, log_trainin
 _TRAIN_LOCK = threading.Lock()
 
 
+def _log_training_run_if_enabled(*, enabled: bool, **kwargs):
+    """Keep interactive training independent from optional tracking storage."""
+
+    if not enabled:
+        print("MLflow run logging disabled for this training request.")
+        return None
+    return log_training_run(**kwargs)
+
+
 def load_verified_training_inputs(
     x_train_path=settings.x_train_path,
     y_train_path=settings.y_train_path,
@@ -53,6 +62,7 @@ def train_model(
     learning_rate: float = 0.05,
     subsample: float = 0.9,
     colsample_bytree: float = 0.9,
+    track_run: bool = True,
 ) -> tuple[Pipeline, dict[str, float]]:
     """Train and evaluate the XGBoost rainfall classifier."""
 
@@ -68,6 +78,7 @@ def train_model(
             learning_rate=learning_rate,
             subsample=subsample,
             colsample_bytree=colsample_bytree,
+            track_run=track_run,
         )
 
 
@@ -82,6 +93,7 @@ def _train_model_unlocked(
     learning_rate: float,
     subsample: float,
     colsample_bytree: float,
+    track_run: bool,
 ) -> tuple[Pipeline, dict[str, float]]:
     x_train_path, y_train_path, manifest = load_verified_training_inputs(
         x_train_path,
@@ -172,7 +184,8 @@ def _train_model_unlocked(
     print(f"\nModel saved to: {model_output_path}")
     print(f"Training metrics saved to: {metrics_output_path}")
 
-    log_training_run(
+    _log_training_run_if_enabled(
+        enabled=track_run,
         pipeline=pipeline,
         metrics=metrics,
         manifest=manifest,

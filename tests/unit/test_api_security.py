@@ -132,6 +132,34 @@ def test_train_passes_auth_when_credentials_match(client):
     assert response.json()["validation"]["roc_auc"] == 0.8
 
 
+def test_train_can_skip_optional_mlflow_tracking(client, monkeypatch):
+    calls = []
+
+    def fake_train_model(**kwargs):
+        calls.append(kwargs)
+        return None, TRAIN_METRICS
+
+    monkeypatch.setattr("weather_mlops.api.main.train_model", fake_train_model)
+
+    response = client.post(
+        "/train",
+        json={"track_run": False},
+        auth=(GOOD_USER, GOOD_PASS),
+    )
+
+    assert response.status_code == 200
+    assert calls == [
+        {
+            "n_estimators": 250,
+            "max_depth": 4,
+            "learning_rate": 0.05,
+            "subsample": 0.9,
+            "colsample_bytree": 0.9,
+            "track_run": False,
+        }
+    ]
+
+
 def test_predict_live_data_rejects_missing_credentials(client):
     response = client.post("/predict/live_data", json={"location": "Sydney"})
 

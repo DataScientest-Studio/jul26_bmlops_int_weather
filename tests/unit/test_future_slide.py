@@ -26,7 +26,9 @@ def test_future_work_has_four_mlop_next_steps() -> None:
     assert html.count("<img ") == 2
     assert "data:image/svg+xml" in html
     assert "data:image/png" in html
-    assert "future-index" in html
+    assert html.count("future-index") == 4
+    for number in ("01", "02", "03", "04"):
+        assert f">{number}</span>" in html
     assert "Canary release" in html
     assert "Shadow evaluation and rollback" in html
     assert "Tomorrow's forecast" not in html
@@ -34,11 +36,7 @@ def test_future_work_has_four_mlop_next_steps() -> None:
 
 
 def test_live_demo_uses_only_the_visual_and_title() -> None:
-    for index, (_, slide) in enumerate(all_slides()):
-        if slide["id"] == "demo":
-            break
-    else:
-        raise AssertionError("live-demo slide missing")
+    index = next(index for index, (_, slide) in enumerate(all_slides()) if slide["id"] == "demo")
 
     html = render_slide(index)
 
@@ -62,16 +60,26 @@ def test_future_work_and_questions_have_distinct_closing_treatments() -> None:
     assert "All nine lifecycle stages are in place." not in questions_html
 
 
-def test_speaker_notes_explain_the_live_demo_and_safe_model_promotion() -> None:
-    slides = {slide["id"]: slide for _, slide in all_slides()}
+def test_speaker_notes_fit_the_seven_minute_demo_and_closing() -> None:
+    slides = {slide["id"]: (section, slide) for section, slide in all_slides()}
 
-    live_demo_notes = " ".join(slides["demo"]["notes"])
-    future_work_notes = " ".join(slides["next-steps"]["notes"])
-    questions_notes = " ".join(slides["questions"]["notes"])
+    section, demo = slides["demo"]
+    future_work = slides["next-steps"][1]
+    questions = slides["questions"][1]
+    live_demo_notes = " ".join(demo["notes"])
+    future_work_notes = " ".join(future_work["notes"])
+    questions_notes = " ".join(questions["notes"])
 
-    assert "About 4 minutes." in live_demo_notes
-    assert "user-facing path" in live_demo_notes
-    assert "repeatable pipeline" in live_demo_notes
+    assert section["minutes"] == 7
+    assert "About 5 minutes." in live_demo_notes
+    assert "Pick Sydney" in live_demo_notes
+    assert "API request" in live_demo_notes
+    assert "POST /train" in live_demo_notes
+    assert "Training complete" in live_demo_notes
+    assert "Recall" in live_demo_notes
+    assert "ROC-AUC" in live_demo_notes
+    assert "MLflow" not in live_demo_notes
+    assert "Airflow" not in live_demo_notes
     assert "About 1 minute." in future_work_notes
     assert "without returning its prediction to users" in future_work_notes
-    assert "solid MLOps base" in questions_notes
+    assert "About 15 seconds." in questions_notes

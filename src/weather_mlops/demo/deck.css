@@ -259,6 +259,12 @@
     line-height: 1;
 }
 
+.future-card.is-lead .future-index {
+    position: absolute;
+    top: 1rem;
+    left: 1.2rem;
+}
+
 .slide p.future-text {
     font-size: clamp(0.88rem, 1.05vw, 1rem) !important;
     line-height: 1.35 !important;

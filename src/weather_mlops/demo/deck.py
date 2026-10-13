@@ -297,9 +297,8 @@ def make_future(slide):
     for number, card in enumerate(slide["cards"]):
         is_lead = number < 2
         card_class = "future-card is-lead" if is_lead else "future-card is-compact"
-        visual = card_image(card["icon"]) if is_lead else (
-            f'<span class="future-index" aria-hidden="true">0{number + 1}</span>'
-        )
+        index = f'<span class="future-index" aria-hidden="true">0{number + 1}</span>'
+        visual = f"{index}{card_image(card['icon'])}" if is_lead else index
         cards = cards + (
             f'<article class="{card_class}" data-focus="card-{number}">'
             f"{visual}"

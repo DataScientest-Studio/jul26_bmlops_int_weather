@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import time
 from html import escape
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -22,7 +23,7 @@ from weather_mlops.demo.observability import (
     trigger_dag_run,
 )
 from weather_mlops.demo.presentation import all_slides
-from weather_mlops.demo.slides import SLIDES
+from weather_mlops.demo.slides import SLIDES, slide_index
 
 MENU = ("Presentations", "Demo")
 STYLES = Path(__file__).with_name("styles.css").read_text(encoding="utf-8")
@@ -79,9 +80,7 @@ GRAFANA_API_URL = os.environ.get(
 GRAFANA_MODEL_URL = os.environ.get(
     "GRAFANA_MODEL_URL", "http://127.0.0.1:3000/d/weather-model/weather-model"
 )
-MLFLOW_URL = os.environ.get("MLFLOW_URL", "http://127.0.0.1:8082")
 GRAFANA_EMBED_ENABLED = os.environ.get("GRAFANA_EMBED_ENABLED", "true").lower() == "true"
-AIRFLOW_URL = os.environ.get("AIRFLOW_URL", "http://127.0.0.1:8081/dags/weather_retrain/grid")
 AIRFLOW_API_URL = os.environ.get("AIRFLOW_API_URL", "http://airflow-webserver:8080")
 PROMETHEUS_URL = os.environ.get("PROMETHEUS_URL", "http://prometheus:9090")
 API_AUTH = (
@@ -185,9 +184,7 @@ def _grafana_panel_url(dashboard_url: str, panel_id: int) -> str:
     if not parsed.path.startswith("/d/"):
         raise ValueError("Grafana dashboard URLs must use the /d/ route")
     query = dict(parse_qsl(parsed.query, keep_blank_values=True))
-    query.update(
-        {"panelId": str(panel_id), "from": "now-5m", "to": "now", "refresh": "5s"}
-    )
+    query.update({"panelId": str(panel_id), "from": "now-5m", "to": "now", "refresh": "5s"})
     return urlunsplit(
         parsed._replace(
             path=parsed.path.replace("/d/", "/d-solo/", 1),
@@ -302,117 +299,231 @@ def _render_airflow(
         )
 
 
-def _render_model_health_evidence() -> None:
-    """Show a prepared, real monitoring state without starting any workflow on stage."""
+def _load_model_health_telemetry() -> ModelTelemetry | None:
+    """Read the same metrics as Grafana without making a monitoring change."""
 
-    telemetry: ModelTelemetry | None = None
     try:
-        telemetry = load_model_telemetry(PROMETHEUS_URL, timeout=0.75)
+        return load_model_telemetry(PROMETHEUS_URL, timeout=0.75)
     except (requests.RequestException, ValueError):
-        pass
+        return None
 
-    if telemetry and telemetry.drift_detected is not None:
-        drift_detected = telemetry.drift_detected >= 1
-        drift_share = (
-            f"{telemetry.drift_share:.0%} of monitored features"
-            if telemetry.drift_share is not None
-            else "Latest report available"
-        )
-        drift_card = (
-            "Feature drift",
-            "Drift detected" if drift_detected else "No drift detected",
-            drift_share,
-            "Evidently compares serving features with the training reference.",
-            "warning" if drift_detected else "safe",
-        )
-    else:
-        drift_card = (
-            "Feature drift",
-            "Open the Grafana panel",
-            "Monitoring feed unavailable",
-            "The embedded panel remains the source of evidence during the demo.",
-            "waiting",
-        )
 
-    if telemetry and telemetry.delayed_recall is not None and telemetry.delayed_roc_auc is not None:
-        quality_card = (
-            "Delayed quality",
-            "Labelled performance available",
-            f"Recall {telemetry.delayed_recall:.3f} / ROC-AUC {telemetry.delayed_roc_auc:.3f}",
-            "These metrics only become valid after the next-day outcomes arrive.",
-            "waiting",
-        )
-    else:
-        quality_card = (
-            "Delayed quality",
-            "Awaiting next-day labels",
-            "No premature recall claim",
-            "Recall and ROC-AUC only become meaningful after the outcomes arrive.",
-            "waiting",
-        )
+def _model_health_replay_markup(
+    telemetry: ModelTelemetry | None,
+    *,
+    revealed: bool,
+) -> str:
+    """Build the two-state outcome replay shown during the defense."""
 
+    recall = telemetry.delayed_recall if telemetry else None
+    roc_auc = telemetry.delayed_roc_auc if telemetry else None
+    has_quality = recall is not None and roc_auc is not None
     retraining_requested = bool(
         telemetry and telemetry.retrain_requested and telemetry.retrain_requested >= 1
     )
-    decision_card = (
+
+    if revealed:
+        outcome_title = "Outcomes reconciled"
+        outcome_detail = "Next-day observations are now available"
+        decision_title = "Retraining requested" if retraining_requested else "No retraining"
+        decision_detail = (
+            "The delayed quality gate failed"
+            if retraining_requested
+            else "The serving model stays unchanged"
+        )
+        decision_tone = "warning" if retraining_requested else "complete"
+    else:
+        outcome_title = "Waiting for next-day labels"
+        outcome_detail = "Production quality is still unknown"
+        decision_title = "Quality gate waiting"
+        decision_detail = "No model decision yet"
+        decision_tone = "pending"
+
+    steps = (
+        ("01", "Predictions stored", "Forecast window captured", "complete"),
+        ("02", outcome_title, outcome_detail, "complete" if revealed else "pending"),
+        ("03", decision_title, decision_detail, decision_tone),
+    )
+    rail = "".join(
         (
-            "Release decision",
-            "Retraining requested",
-            "Request = 1",
-            "Delayed production performance crossed the gate. A candidate can be evaluated.",
-            "warning",
+            f'<div class="health-replay__step health-replay__step--{tone}">'
+            f'<span class="health-replay__number">{number}</span>'
+            f"<strong>{escape(title)}</strong>"
+            f"<small>{escape(detail)}</small>"
+            "</div>"
+            + (
+                '<span class="health-replay__connector" aria-hidden="true"></span>'
+                if number != "03"
+                else ""
+            )
         )
-        if retraining_requested
-        else (
-            "Release decision",
-            "No retraining",
-            "Request remains 0",
-            "Feature drift raises a warning. Labelled performance degradation requests a "
-            "candidate.",
-            "safe",
-        )
+        for number, title, detail, tone in steps
     )
 
-    cards = "".join(
-        (
-            f'<article class="health-evidence__card health-evidence__card--{tone}">'
-            f'<p class="health-evidence__label">{escape(label)}</p>'
-            f'<h2>{escape(headline)}</h2>'
-            f'<p class="health-evidence__value">{escape(value)}</p>'
-            f'<p class="health-evidence__detail">{escape(detail)}</p>'
-            "</article>"
+    result = ""
+    if revealed:
+        if has_quality:
+            metrics = f"<span>Recall {recall:.3f}</span><span>ROC-AUC {roc_auc:.3f}</span>"
+        else:
+            metrics = "<span>Quality metrics unavailable</span>"
+        drift_context = (
+            f" Feature drift is {telemetry.drift_share:.0%}, but labelled performance "
+            "makes the retraining decision."
+            if telemetry and telemetry.drift_share is not None
+            else " Labelled performance makes the retraining decision."
         )
-        for label, headline, value, detail, tone in (drift_card, quality_card, decision_card)
+        result = (
+            f'<div class="health-replay__result health-replay__result--{decision_tone}">'
+            f"<strong>{escape(decision_title)}</strong>"
+            f'<div class="health-replay__metrics">{metrics}</div>'
+            f"<p>{escape(drift_context.strip())}</p>"
+            "</div>"
+        )
+
+    state_class = "is-revealed" if revealed else "is-waiting"
+    return (
+        f'<section class="health-replay {state_class}" aria-label="Next-day outcome replay">'
+        f'<div class="health-replay__rail">{rail}</div>'
+        f"{result}"
+        "</section>"
     )
-    st.markdown(
-        '<section class="health-evidence" aria-label="Prepared model health evidence">'
-        f"{cards}"
-        "</section>",
-        unsafe_allow_html=True,
+
+
+def _toggle_model_health_replay() -> None:
+    """Switch the outcome replay before Streamlit redraws the page."""
+
+    st.session_state.model_health_revealed = not bool(
+        st.session_state.get("model_health_revealed", False)
     )
 
 
 def _render_model_health() -> None:
-    """Present prepared monitoring evidence without waiting on a live workflow."""
+    """Replay the arrival of delayed labels without starting a live workflow."""
 
     st.markdown(
-        '<p class="lede">Prepared monitoring replay: inspect an actual drift report, see why '
-        "delayed labels matter, and show the safe decision without waiting for a workflow.</p>",
+        '<p class="lede">A forecast becomes measurable when tomorrow arrives. Reveal the '
+        "next-day outcomes, then watch the quality gate decide.</p>",
         unsafe_allow_html=True,
     )
-    _render_model_health_evidence()
-
-    st.markdown("<h2>Monitoring evidence in Grafana</h2>", unsafe_allow_html=True)
-    st.caption(
-        "The prepared interpretation above matches these real Evidently and performance-gate "
-        "series. The presentation does not trigger a pipeline or replace the serving model."
+    telemetry = _load_model_health_telemetry()
+    revealed = bool(st.session_state.get("model_health_revealed", False))
+    st.markdown(
+        _model_health_replay_markup(telemetry, revealed=revealed),
+        unsafe_allow_html=True,
     )
-    _render_grafana_panels(GRAFANA_MODEL_URL, (15, 16, 14), height=260)
-    st.link_button(
-        "Open the full model-health dashboard",
-        GRAFANA_MODEL_URL,
+    st.button(
+        "Reset replay" if revealed else "Reveal next-day outcomes",
+        type="primary",
         use_container_width=True,
+        on_click=_toggle_model_health_replay,
     )
+
+    if revealed:
+        st.markdown("<h2>Grafana confirms the decision</h2>", unsafe_allow_html=True)
+        st.caption(
+            "These are the real delayed-quality and retraining panels. The replay does not "
+            "start Airflow, train a model, or change the serving champion."
+        )
+        _render_grafana_panels(GRAFANA_MODEL_URL, (16, 14), height=250)
+
+
+def _request_model_training(
+    api_url: str,
+    *,
+    auth: tuple[str, str],
+    post=requests.post,
+) -> dict:
+    """Train through the same authenticated API boundary used by other clients."""
+
+    response = post(
+        f"{api_url}/train",
+        json={"track_run": False},
+        auth=auth if all(auth) else None,
+        timeout=120,
+        verify=tls_verify(api_url),
+    )
+    response.raise_for_status()
+    payload = response.json()
+    if not isinstance(payload, dict) or not isinstance(payload.get("validation"), dict):
+        raise ValueError("Training response did not contain validation metrics.")
+    return payload
+
+
+def _training_result_markup(payload: dict, *, elapsed_seconds: float) -> str:
+    """Turn the returned validation metrics into one projection-friendly result."""
+
+    train = payload["train"]
+    validation = payload["validation"]
+    metrics = (
+        ("Validation recall", validation["recall"]),
+        ("Validation ROC-AUC", validation["roc_auc"]),
+        ("Validation accuracy", validation["accuracy"]),
+    )
+    metric_markup = "".join(
+        '<article class="training-result__metric">'
+        f"<span>{label}</span><strong>{float(value):.1%}</strong>"
+        "</article>"
+        for label, value in metrics
+    )
+    return (
+        '<section class="training-result" aria-label="Model training result">'
+        '<div class="training-result__summary"><span aria-hidden="true">&#10003;</span>'
+        "<div><strong>Training complete</strong>"
+        f"<small>POST /train finished in {elapsed_seconds:.1f} seconds</small></div></div>"
+        f'<div class="training-result__metrics">{metric_markup}</div>'
+        '<p class="training-result__comparison">Training ROC-AUC '
+        f"{float(train['roc_auc']):.1%} &rarr; validation ROC-AUC "
+        f"{float(validation['roc_auc']):.1%}</p>"
+        "</section>"
+    )
+
+
+def _render_model_training(api_url: str) -> None:
+    """Run one real training call and show the returned validation evidence."""
+
+    st.markdown(
+        '<p class="lede">One API call fits the model and returns the metrics we use to '
+        "judge it.</p>",
+        unsafe_allow_html=True,
+    )
+    st.caption("POST /train → fit XGBoost → validate → return metrics")
+
+    action = st.empty()
+    result_panel = st.empty()
+    st.markdown(
+        '<h2 class="section-title">API traffic while training runs</h2>',
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        "Requests per endpoint and average serving call time for the last 5 minutes. "
+        "The training call appears in request traffic when it completes; its own duration "
+        "is shown with the result."
+    )
+    _render_grafana_panels(GRAFANA_API_URL, (1, 3), height=190)
+
+    result = st.session_state.get("training_result")
+    if action.button("Train model now", type="primary", use_container_width=True):
+        started = time.perf_counter()
+        try:
+            with st.spinner("Training XGBoost through POST /train…"):
+                payload = _request_model_training(api_url, auth=API_AUTH)
+            result = {
+                "payload": payload,
+                "elapsed_seconds": time.perf_counter() - started,
+            }
+            st.session_state.training_result = result
+        except (requests.RequestException, KeyError, TypeError, ValueError) as exc:
+            st.error(f"Training failed: {exc}")
+            result = None
+
+    if result:
+        result_panel.markdown(
+            _training_result_markup(
+                result["payload"],
+                elapsed_seconds=float(result["elapsed_seconds"]),
+            ),
+            unsafe_allow_html=True,
+        )
 
 
 def _show_prediction(response: requests.Response) -> None:
@@ -576,12 +687,35 @@ def _render_demo() -> None:
     if slide.id != "live":
         st.markdown(f"<h1>{slide.title}</h1>", unsafe_allow_html=True)
 
-    if slide.id == "health":
-        _render_model_health()
+    if slide.id == "train":
+        _render_model_training(DEFAULT_API_URL.rstrip("/"))
     elif slide.id == "live":
         _render_live(DEFAULT_API_URL.rstrip("/"))
     else:
         st.caption("This screen has no live panel.")
+
+
+def _menu_navigation_state(menu: str) -> dict[str, int]:
+    """Choose the correct continuation point when changing presentation surfaces."""
+
+    if menu == "Demo":
+        return {"slide": slide_index("live")}
+    live_demo_index = next(
+        index for index, (_, slide) in enumerate(all_slides()) if slide["id"] == "demo"
+    )
+    return {"deck": live_demo_index, "cue": -1}
+
+
+def _apply_menu_navigation(state) -> None:
+    menu = str(state["menu"])
+    for key, value in _menu_navigation_state(menu).items():
+        state[key] = value
+    if menu == "Demo":
+        state.pop("training_result", None)
+
+
+def _sync_menu_navigation() -> None:
+    _apply_menu_navigation(st.session_state)
 
 
 def main() -> None:
@@ -594,7 +728,13 @@ def main() -> None:
     if st.query_params.get("view") == "notes":
         _render_notes()
         return
-    menu = st.segmented_control("Menu", MENU, default=MENU[0], key="menu")
+    menu = st.segmented_control(
+        "Menu",
+        MENU,
+        default=MENU[0],
+        key="menu",
+        on_change=_sync_menu_navigation,
+    )
     if menu == "Demo":
         _render_demo()
     else:

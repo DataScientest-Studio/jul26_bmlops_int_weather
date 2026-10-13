@@ -4,14 +4,14 @@ from weather_mlops.demo.slides import SLIDES, slide_index
 def test_deck_follows_the_defense_demo() -> None:
     ids = [slide.id for slide in SLIDES]
 
-    assert ids == ["live", "health"]
+    assert ids == ["live", "train"]
 
 
-def test_model_health_keeps_feature_drift_separate_from_promotion() -> None:
-    health = SLIDES[slide_index("health")]
+def test_training_screen_explains_the_single_live_action() -> None:
+    training = SLIDES[slide_index("train")]
 
-    assert any("Evidently" in note for note in health.notes)
-    assert any("champion" in note for note in health.notes)
+    assert any("POST /train" in note for note in training.notes)
+    assert any("Recall" in note and "ROC-AUC" in note for note in training.notes)
 
 
 def test_live_slide_does_not_mention_service_role_usage() -> None:
@@ -21,7 +21,8 @@ def test_live_slide_does_not_mention_service_role_usage() -> None:
     assert any("Nginx" in note for note in live.notes)
 
 
-def test_model_health_slide_explains_the_live_grafana_evidence() -> None:
-    health = SLIDES[slide_index("health")]
+def test_training_screen_does_not_repeat_the_model_health_story() -> None:
+    training = SLIDES[slide_index("train")]
 
-    assert any("Grafana" in note for note in health.notes)
+    assert all("Evidently" not in note for note in training.notes)
+    assert all("drift" not in note.lower() for note in training.notes)

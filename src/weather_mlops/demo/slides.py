@@ -25,20 +25,18 @@ SLIDES: tuple[Slide, ...] = (
         ),
     ),
     Slide(
-        id="health",
-        title="Model health",
-        kicker="Model health",
+        id="train",
+        title="Model training",
+        kicker="Model training",
         notes=(
-            "First we run weather_pipeline: it ingests and merges the prepared batch, "
-            "preprocesses it, then snapshots both raw and processed data in Supabase Storage.",
-            "The dataset hash is recorded before monitoring, so training uses a reproducible "
-            "version rather than a mutable local file.",
-            "The live Grafana trends show Evidently's drift share, delayed quality, and the "
-            "retraining gate. We can point to the exact monitoring evidence before acting.",
-            "For the demo we can manually start weather_retrain on the latest registered snapshot. "
-            "Airflow shows train, evaluation, and compare as it runs.",
-            "Train registers the candidate in MLflow. Compare only promotes it to champion if it "
-            "beats the validation guards on that same dataset version.",
+            "Click Train model now. This sends one authenticated POST /train request through "
+            "the same Nginx gateway as the prediction.",
+            "While it runs, the page shows a training state instead of asking us to explain "
+            "background monitoring charts.",
+            "The API returns the training and validation metrics directly. Point to validation "
+            "Recall, ROC-AUC, and Accuracy.",
+            "The result is the visible proof: a real model was fitted and evaluated during "
+            "the demo.",
         ),
     ),
 )

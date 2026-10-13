@@ -203,6 +203,10 @@ class TrainInput(BaseModel):
     learning_rate: float = Field(default=0.05, gt=0, le=1)
     subsample: float = Field(default=0.9, gt=0, le=1)
     colsample_bytree: float = Field(default=0.9, gt=0, le=1)
+    track_run: bool = Field(
+        default=True,
+        description="Log and register this training run in MLflow.",
+    )
 
 
 class LivePredictionInput(LocationBase):
