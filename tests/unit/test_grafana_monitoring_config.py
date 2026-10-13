@@ -38,6 +38,22 @@ def test_only_delayed_performance_gate_can_request_retraining() -> None:
     assert retrain["notification_settings"]["receiver"] == "airflow-retrain"
 
 
+def test_demo_panels_show_user_endpoints_not_the_metrics_scrape() -> None:
+    api = json.loads(
+        (ROOT / "docker/grafana/dashboards/grafana_api.json").read_text(encoding="utf-8")
+    )
+    panels = {panel["id"]: panel for panel in api["panels"]}
+    relevant = 'handler=~"/health|/predict|/predict/live_data|/train"'
+
+    for panel_id in (1, 3):
+        expression = panels[panel_id]["targets"][0]["expr"]
+        assert relevant in expression
+        assert "/metrics" not in expression
+        assert 'handler!="/train"' not in expression
+
+    assert panels[3]["title"] == "Average request duration"
+
+
 def test_dashboards_refresh_during_the_five_minute_demo() -> None:
     api = json.loads(
         (ROOT / "docker/grafana/dashboards/grafana_api.json").read_text(encoding="utf-8")
