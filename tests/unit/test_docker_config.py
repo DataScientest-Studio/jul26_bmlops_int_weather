@@ -188,3 +188,10 @@ def test_test_service_runs_ruff_and_pytest():
 
     assert command[-1] == "ruff check . && ruff format --check . && pytest -v"
     assert load_services()["test"]["networks"] == ["weather_network"]
+
+
+def test_test_image_installs_the_demo_runtime():
+    """The container imports the Streamlit app, so it needs that image's dependencies."""
+    dockerfile = (PROJECT_ROOT / "docker" / "test" / "Dockerfile").read_text()
+
+    assert "docker/demo/requirements.txt" in dockerfile
