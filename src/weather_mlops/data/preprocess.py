@@ -202,29 +202,46 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> None:
+def write_processed_split(
+    input_path: Path,
+    output_dir: Path,
+    *,
+    training_window_days: int | None = None,
+    validation_window_days: int | None = None,
+    test_window_days: int | None = None,
+) -> Path:
+    """Turn the merged raw CSV into the six model files and their manifest."""
+
     from weather_mlops.data.manifest import build_processed_manifest, write_processed_manifest
     from weather_mlops.data.versioning import hash_file
 
-    args = parse_args()
-    dataframe = pd.read_csv(args.input)
+    train_days = (
+        settings.training_window_days if training_window_days is None else training_window_days
+    )
+    validation_days = (
+        settings.validation_window_days
+        if validation_window_days is None
+        else validation_window_days
+    )
+    test_days = settings.test_window_days if test_window_days is None else test_window_days
+    dataframe = pd.read_csv(input_path)
     cleaned = clean_dataframe(dataframe)
     X_train, X_validation, X_test, y_train, y_validation, y_test = (
         temporal_train_validation_test_split(
             cleaned,
-            training_window_days=args.training_window_days,
-            validation_window_days=args.validation_window_days,
-            test_window_days=args.test_window_days,
+            training_window_days=train_days,
+            validation_window_days=validation_days,
+            test_window_days=test_days,
         )
     )
     split = build_split_metadata(
         cleaned,
-        training_window_days=args.training_window_days,
-        validation_window_days=args.validation_window_days,
-        test_window_days=args.test_window_days,
+        training_window_days=train_days,
+        validation_window_days=validation_days,
+        test_window_days=test_days,
     )
 
-    args.output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
     outputs = {
         "X_train.csv": X_train,
         "X_validation.csv": X_validation,
@@ -235,18 +252,30 @@ def main() -> None:
     }
 
     for filename, output in outputs.items():
-        output_path = args.output_dir / filename
+        output_path = output_dir / filename
         output.to_csv(output_path, index=False)
         print(f"Wrote {len(output):,} rows to {output_path}")
 
-    parent_sha256 = hash_file(args.input, "sha256") if args.input.exists() else None
+    parent_sha256 = hash_file(input_path, "sha256") if input_path.exists() else None
     manifest = build_processed_manifest(
-        args.output_dir,
+        output_dir,
         parent_sha256=parent_sha256,
         split=split,
     )
-    manifest_path = write_processed_manifest(manifest, args.output_dir / "manifest.json")
+    manifest_path = write_processed_manifest(manifest, output_dir / "manifest.json")
     print(f"Wrote processed manifest {manifest_path} sha256={manifest['sha256']}")
+    return manifest_path
+
+
+def main() -> None:
+    args = parse_args()
+    write_processed_split(
+        args.input,
+        args.output_dir,
+        training_window_days=args.training_window_days,
+        validation_window_days=args.validation_window_days,
+        test_window_days=args.test_window_days,
+    )
 
 
 if __name__ == "__main__":

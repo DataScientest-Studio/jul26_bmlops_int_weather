@@ -139,6 +139,11 @@ services:
       # Empty defaults keep other compose commands from warning.
       API_AUTH_USER: ${API_AUTH_USER:-}
       API_AUTH_PASSWORD: ${API_AUTH_PASSWORD:-}
+    volumes:
+      # Writable so the train screen can rebuild the split from the raw files.
+      # The API keeps its own read-only mount of the same directory.
+      - ./data:/app/data
+      - ./dvc.lock:/app/dvc.lock:ro
     depends_on:
       api:
         condition: service_healthy

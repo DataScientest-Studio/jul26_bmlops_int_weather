@@ -84,6 +84,14 @@ def test_api_starts_after_preprocessing():
     assert depends_on["preprocess"]["condition"] == "service_completed_successfully"
 
 
+def test_streamlit_can_refresh_the_processed_split_from_dvc():
+    service = load_services()["streamlit"]
+
+    assert "./data:/app/data" in service["volumes"]
+    assert "./data:/app/data:ro" not in service["volumes"]
+    assert "./dvc.lock:/app/dvc.lock:ro" in service["volumes"]
+
+
 def test_api_cannot_write_to_the_dataset():
     """The api saves models and reports, but it must never change data/."""
     volumes = load_services()["api"]["volumes"]
