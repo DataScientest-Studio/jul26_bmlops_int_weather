@@ -502,72 +502,12 @@
     color: var(--muted);
 }
 
-/* Metrics chart next to the promotion rule. */
+/* Two columns: points on the left, figures or a box on the right. */
 .split {
     display: grid;
     grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
     gap: 3.5rem;
     align-items: start;
-}
-
-.bar-group {
-    margin-bottom: 1.2rem;
-}
-
-.bar-metric {
-    font-weight: 600;
-    margin: 0 0 0.35rem;
-}
-
-.bar-row {
-    display: grid;
-    grid-template-columns: 6rem minmax(0, 1fr) 3.4rem;
-    align-items: center;
-    gap: 0.6rem;
-    margin-bottom: 0.25rem;
-    font-size: 0.88rem;
-}
-
-.bar-split {
-    color: var(--muted);
-}
-
-.bar-track {
-    height: 0.8rem;
-    background: #E6ECF1;
-}
-
-.bar {
-    display: block;
-    height: 100%;
-    background: var(--rain);
-}
-
-.bar.is-below {
-    background: var(--ochre);
-}
-
-.bar-value {
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-}
-
-.bar-track {
-    position: relative;
-}
-
-.gate {
-    position: absolute;
-    top: -0.25rem;
-    bottom: -0.25rem;
-    border-left: 2px dashed var(--ink);
-}
-
-.gate-label {
-    font-weight: 400;
-    font-size: 0.8rem;
-    color: var(--muted);
-    margin-left: 0.6rem;
 }
 
 .slide-foot {
@@ -712,54 +652,129 @@
     font-variant-numeric: tabular-nums;
 }
 
-/* ROC curve drawn as svg. */
-.roc-chart {
-    width: 100%;
-    max-width: 22rem;
+/* Tracking: what one training run and one daily Evidently run record. */
+.layout-tracking .slide-body {
+    padding-top: 1.6rem;
 }
 
-.roc-area {
-    fill: var(--rain);
-    fill-opacity: 0.12;
+.layout-tracking h2.slide-title {
+    margin-bottom: 1.4rem !important;
 }
 
-.roc-line {
-    fill: none;
-    stroke: var(--rain);
-    stroke-width: 2.5;
+.zones.run-zones {
+    grid-template-columns: repeat(4, 1fr);
+    margin: 0 0 1.2rem;
 }
 
-.roc-diagonal {
-    stroke: var(--muted);
-    stroke-dasharray: 5 5;
+.run-zones .zone {
+    padding: 0.9rem 1.1rem;
 }
 
-.roc-axis {
-    stroke: var(--muted);
+.run-zones.is-monitoring .zone {
+    border-top-color: var(--rain);
 }
 
-.roc-dot {
-    fill: var(--ochre);
-}
-
-.roc-label,
-.roc-axis-label {
-    font-size: 11px;
-    fill: var(--muted);
-}
-
-.roc-axis-label {
-    text-anchor: middle;
-}
-
-.roc-auc {
-    font-size: 15px;
+.zone-ask {
+    font-size: 1.2rem;
     font-weight: 600;
-    fill: var(--rain);
+    margin: 0 0 0.4rem;
 }
 
-.layout-roc .facts {
-    margin-top: 1.2rem;
+/* Streamlit gives inline code a tinted background; keep the slide's own colours. */
+.slide code {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.9em;
+    padding: 0;
+    background: none;
+    color: inherit;
+}
+
+/* Registry: model versions, with the alias each one holds above it. */
+.versions .lane-steps {
+    padding-top: 2.1rem;
+}
+
+.versions .lane-steps li {
+    position: relative;
+    min-width: 7.5rem;
+    text-align: center;
+}
+
+.versions .lane-steps li.is-champion {
+    border-top-color: var(--eucalyptus);
+    font-weight: 600;
+}
+
+.versions .lane-steps li.is-rejected {
+    border-top-color: var(--ochre);
+}
+
+.versions .lane-steps li.is-older {
+    color: var(--muted);
+    border-top-color: var(--line);
+}
+
+.alias {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: -2.1rem;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.is-champion .alias {
+    color: var(--eucalyptus);
+}
+
+.is-candidate .alias {
+    color: var(--rain);
+}
+
+.step-note {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 400;
+    color: var(--muted);
+}
+
+.is-rejected .step-note {
+    color: var(--ochre);
+}
+
+.layout-registry .lanes {
+    margin-bottom: 2.6rem;
+}
+
+.layout-registry .split {
+    gap: 3rem;
+}
+
+.gate-name {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--muted);
+    margin: 0 0 0.6rem;
+}
+
+.layout-registry .points {
+    max-width: none;
+}
+
+.layout-registry .points li::marker {
+    color: var(--eucalyptus);
+    font-weight: 400;
+}
+
+/* The hub box sits in the split here, not in the architecture grid. */
+.layout-registry .arch-hub {
+    grid-area: auto;
+    align-self: start;
+}
+
+.hub-note + .hub-note {
+    margin-top: 0.7rem;
 }
 
 @media (max-width: 820px) {
@@ -794,6 +809,10 @@
 
     .questions-mark {
         padding-right: 1.5rem;
+    }
+
+    .zones.run-zones {
+        grid-template-columns: repeat(2, 1fr);
     }
 
     .arch-stores {
