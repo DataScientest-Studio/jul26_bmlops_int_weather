@@ -38,6 +38,19 @@ def test_only_delayed_performance_gate_can_request_retraining() -> None:
     assert retrain["notification_settings"]["receiver"] == "airflow-retrain"
 
 
+def test_dashboards_refresh_during_the_five_minute_demo() -> None:
+    api = json.loads(
+        (ROOT / "docker/grafana/dashboards/grafana_api.json").read_text(encoding="utf-8")
+    )
+    model = json.loads(
+        (ROOT / "docker/grafana/dashboards/grafana_model.json").read_text(encoding="utf-8")
+    )
+
+    assert api["refresh"] == "5s"
+    assert api["time"]["from"] == "now-5m"
+    assert model["refresh"] == "5s"
+
+
 def test_weather_model_dashboard_includes_evidently_batch_metrics() -> None:
     dashboard = json.loads(
         (ROOT / "docker/grafana/dashboards/grafana_model.json").read_text(encoding="utf-8")

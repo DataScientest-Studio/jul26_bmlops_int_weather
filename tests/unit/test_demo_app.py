@@ -6,7 +6,9 @@ from weather_mlops.demo.app import (
     _grafana_embed_url,
     _grafana_panel_url,
     _render_demo,
+    _render_live_activity,
     _render_model_health,
+    _render_model_health_evidence,
     _render_presentation,
 )
 from weather_mlops.demo.observability import DagTask
@@ -23,8 +25,16 @@ def test_grafana_panel_url_uses_the_real_solo_panel_for_the_last_five_minutes() 
 
     assert url == (
         "http://127.0.0.1:3000/d-solo/weather-api/weather-api?"
-        "kiosk=&theme=dark&panelId=3&from=now-5m&to=now"
+        "kiosk=&theme=dark&panelId=3&from=now-5m&to=now&refresh=5s"
     )
+
+
+def test_live_prediction_shows_request_and_latency_without_error_rate() -> None:
+    activity = inspect.getsource(_render_live_activity)
+
+    assert "(1, 3)" in activity
+    assert "(1, 2, 3)" not in activity
+    assert "error" not in activity.lower()
 
 
 def test_projected_demo_keeps_speaker_notes_in_the_separate_notes_view() -> None:
@@ -36,23 +46,25 @@ def test_presentation_hands_off_to_the_demo_tab_without_rendering_it_twice() -> 
     assert "_render_live(" not in inspect.getsource(_render_presentation)
 
 
-def test_model_health_uses_airflow_lifecycle_not_synthetic_drift() -> None:
+def test_model_health_is_a_prepared_evidence_replay_not_a_live_workflow() -> None:
     health = inspect.getsource(_render_model_health)
 
-    assert "Simulate drift" not in health
-    assert "Refresh prepared data" in health
-    assert "Train candidate and compare" in health
-    assert "MLflow" in health
+    assert "Prepared monitoring replay" in health
+    assert "_render_model_health_evidence()" in health
+    assert "(15, 16, 14)" in health
+    assert "Refresh prepared data" not in health
+    assert "Train candidate and compare" not in health
+    assert "_trigger_dag(" not in health
+    assert "_render_airflow(" not in health
 
 
-def test_model_health_keeps_manual_retraining_separate_from_drift_and_refresh_success() -> None:
-    health = inspect.getsource(_render_model_health)
+def test_model_health_evidence_reads_the_same_live_metrics_as_grafana() -> None:
+    evidence = inspect.getsource(_render_model_health_evidence)
 
-    assert "can_retrain = configured" in health
-    assert "can_retrain = pipeline_state ==" not in health
-    assert "No-drift runs do not block a manual retrain" in health
-    assert "You can train now on the last completed" in health
-    assert "Automatic retraining remains separate" in health
+    assert "load_model_telemetry" in evidence
+    assert "PROMETHEUS_URL" in evidence
+    assert "Retraining requested" in evidence
+    assert "No retraining" in evidence
 
 
 def test_airflow_task_flow_is_rendered_as_a_connected_dag() -> None:

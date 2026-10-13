@@ -14,10 +14,10 @@ from weather_mlops.api.http import tls_verify
 from weather_mlops.config.settings import settings
 from weather_mlops.demo.deck import render_slide, slide_label
 from weather_mlops.demo.observability import (
-    PIPELINE_TASKS,
-    RETRAIN_TASKS,
     DagTask,
+    ModelTelemetry,
     load_dag_run_state,
+    load_model_telemetry,
     load_task_states,
     trigger_dag_run,
 )
@@ -83,6 +83,7 @@ MLFLOW_URL = os.environ.get("MLFLOW_URL", "http://127.0.0.1:8082")
 GRAFANA_EMBED_ENABLED = os.environ.get("GRAFANA_EMBED_ENABLED", "true").lower() == "true"
 AIRFLOW_URL = os.environ.get("AIRFLOW_URL", "http://127.0.0.1:8081/dags/weather_retrain/grid")
 AIRFLOW_API_URL = os.environ.get("AIRFLOW_API_URL", "http://airflow-webserver:8080")
+PROMETHEUS_URL = os.environ.get("PROMETHEUS_URL", "http://prometheus:9090")
 API_AUTH = (
     os.environ.get("API_AUTH_USER") or "",
     os.environ.get("API_AUTH_PASSWORD") or "",
@@ -184,7 +185,9 @@ def _grafana_panel_url(dashboard_url: str, panel_id: int) -> str:
     if not parsed.path.startswith("/d/"):
         raise ValueError("Grafana dashboard URLs must use the /d/ route")
     query = dict(parse_qsl(parsed.query, keep_blank_values=True))
-    query.update({"panelId": str(panel_id), "from": "now-5m", "to": "now"})
+    query.update(
+        {"panelId": str(panel_id), "from": "now-5m", "to": "now", "refresh": "5s"}
+    )
     return urlunsplit(
         parsed._replace(
             path=parsed.path.replace("/d/", "/d-solo/", 1),
@@ -209,8 +212,11 @@ def _render_grafana_panels(
 
 def _render_live_activity() -> None:
     st.markdown("<h2>Live API activity</h2>", unsafe_allow_html=True)
-    st.caption("These are the live Grafana panels; make a forecast and watch the request appear.")
-    _render_grafana_panels(GRAFANA_API_URL, (1, 2, 3))
+    st.caption(
+        "Request rate and latency for the last 5 minutes. Make a forecast and watch "
+        "the request appear; these panels refresh every 5 seconds."
+    )
+    _render_grafana_panels(GRAFANA_API_URL, (1, 3))
 
 
 def _dag_markup(tasks: tuple[DagTask, ...], states: dict[str, str]) -> str:
@@ -296,97 +302,117 @@ def _render_airflow(
         )
 
 
-def _render_model_health() -> None:
-    """Present the real data lineage, monitoring evidence, and guarded candidate lifecycle."""
+def _render_model_health_evidence() -> None:
+    """Show a prepared, real monitoring state without starting any workflow on stage."""
 
-    st.markdown(
-        '<p class="lede">Refresh the prepared weather batch, preserve its immutable dataset '
-        "version, inspect drift evidence, then train a candidate only when you choose to.</p>",
-        unsafe_allow_html=True,
-    )
-    configured = all(AIRFLOW_AUTH)
-    if not configured:
-        st.warning("Restart `make streamlit` so Airflow credentials are hydrated from Vault.")
+    telemetry: ModelTelemetry | None = None
+    try:
+        telemetry = load_model_telemetry(PROMETHEUS_URL, timeout=0.75)
+    except (requests.RequestException, ValueError):
+        pass
 
-    st.markdown("<h2>1. Refresh and version the data</h2>", unsafe_allow_html=True)
-    st.caption(
-        "Airflow ingests and merges the prepared batch, preprocesses the splits, uploads immutable "
-        "raw and processed snapshots to Supabase Storage, and records their hashes in "
-        "dataset_versions."
-    )
-    if st.button(
-        "Refresh prepared data",
-        type="primary",
-        use_container_width=True,
-        disabled=not configured,
-    ):
-        _trigger_dag(
-            "weather_pipeline",
-            "pipeline_run_id",
-            conf={"triggered_by": "streamlit-demo", "purpose": "prepared-data-refresh"},
+    if telemetry and telemetry.drift_detected is not None:
+        drift_detected = telemetry.drift_detected >= 1
+        drift_share = (
+            f"{telemetry.drift_share:.0%} of monitored features"
+            if telemetry.drift_share is not None
+            else "Latest report available"
         )
-        st.session_state.pop("retrain_run_id", None)
-    pipeline_run_id = st.session_state.get("pipeline_run_id")
-    _render_airflow("weather_pipeline", PIPELINE_TASKS, pipeline_run_id)
-
-    st.markdown("<h2>2. Inspect live model-health evidence</h2>", unsafe_allow_html=True)
-    st.caption(
-        "These real Grafana trends show Evidently's drift share, delayed-outcome quality, and "
-        "whether the performance gate has requested retraining."
-    )
-    _render_grafana_panels(GRAFANA_MODEL_URL, (15, 16, 14), height=250)
-
-    st.markdown("<h2>3. Train and compare a candidate</h2>", unsafe_allow_html=True)
-    pipeline_state = None
-    if pipeline_run_id and configured:
-        try:
-            pipeline_state = _run_state("weather_pipeline", pipeline_run_id)
-        except (requests.RequestException, ValueError) as exc:
-            st.caption(f"Unable to confirm the data-refresh state: {exc}")
-    refresh_is_running = pipeline_state in {"queued", "running", "scheduled"}
-    can_retrain = configured
-    if pipeline_state == "success":
-        st.caption(
-            "This candidate will use the dataset version created by the completed refresh above."
-        )
-    elif refresh_is_running:
-        st.caption(
-            "The data refresh is still running. You can train now on the last completed "
-            "registered version, or wait to use the refreshed version."
-        )
-    elif not pipeline_run_id:
-        st.caption(
-            "No refresh is selected, so this runs deliberately on the latest registered dataset "
-            "version. No-drift runs do not block a manual retrain."
+        drift_card = (
+            "Feature drift",
+            "Drift detected" if drift_detected else "No drift detected",
+            drift_share,
+            "Evidently compares serving features with the training reference.",
+            "warning" if drift_detected else "safe",
         )
     else:
-        st.caption(
-            "The selected refresh did not complete. A manual retrain uses the latest registered "
-            "dataset version instead."
+        drift_card = (
+            "Feature drift",
+            "Open the Grafana panel",
+            "Monitoring feed unavailable",
+            "The embedded panel remains the source of evidence during the demo.",
+            "waiting",
         )
-    if st.button(
-        "Train candidate and compare",
+
+    if telemetry and telemetry.delayed_recall is not None and telemetry.delayed_roc_auc is not None:
+        quality_card = (
+            "Delayed quality",
+            "Labelled performance available",
+            f"Recall {telemetry.delayed_recall:.3f} / ROC-AUC {telemetry.delayed_roc_auc:.3f}",
+            "These metrics only become valid after the next-day outcomes arrive.",
+            "waiting",
+        )
+    else:
+        quality_card = (
+            "Delayed quality",
+            "Awaiting next-day labels",
+            "No premature recall claim",
+            "Recall and ROC-AUC only become meaningful after the outcomes arrive.",
+            "waiting",
+        )
+
+    retraining_requested = bool(
+        telemetry and telemetry.retrain_requested and telemetry.retrain_requested >= 1
+    )
+    decision_card = (
+        (
+            "Release decision",
+            "Retraining requested",
+            "Request = 1",
+            "Delayed production performance crossed the gate. A candidate can be evaluated.",
+            "warning",
+        )
+        if retraining_requested
+        else (
+            "Release decision",
+            "No retraining",
+            "Request remains 0",
+            "Feature drift raises a warning. Labelled performance degradation requests a "
+            "candidate.",
+            "safe",
+        )
+    )
+
+    cards = "".join(
+        (
+            f'<article class="health-evidence__card health-evidence__card--{tone}">'
+            f'<p class="health-evidence__label">{escape(label)}</p>'
+            f'<h2>{escape(headline)}</h2>'
+            f'<p class="health-evidence__value">{escape(value)}</p>'
+            f'<p class="health-evidence__detail">{escape(detail)}</p>'
+            "</article>"
+        )
+        for label, headline, value, detail, tone in (drift_card, quality_card, decision_card)
+    )
+    st.markdown(
+        '<section class="health-evidence" aria-label="Prepared model health evidence">'
+        f"{cards}"
+        "</section>",
+        unsafe_allow_html=True,
+    )
+
+
+def _render_model_health() -> None:
+    """Present prepared monitoring evidence without waiting on a live workflow."""
+
+    st.markdown(
+        '<p class="lede">Prepared monitoring replay: inspect an actual drift report, see why '
+        "delayed labels matter, and show the safe decision without waiting for a workflow.</p>",
+        unsafe_allow_html=True,
+    )
+    _render_model_health_evidence()
+
+    st.markdown("<h2>Monitoring evidence in Grafana</h2>", unsafe_allow_html=True)
+    st.caption(
+        "The prepared interpretation above matches these real Evidently and performance-gate "
+        "series. The presentation does not trigger a pipeline or replace the serving model."
+    )
+    _render_grafana_panels(GRAFANA_MODEL_URL, (15, 16, 14), height=260)
+    st.link_button(
+        "Open the full model-health dashboard",
+        GRAFANA_MODEL_URL,
         use_container_width=True,
-        disabled=not can_retrain,
-    ):
-        _trigger_dag(
-            "weather_retrain",
-            "retrain_run_id",
-            conf={
-                "triggered_by": "streamlit-demo",
-                "source_pipeline_run_id": str(pipeline_run_id or "latest_registered"),
-            },
-        )
-    _render_airflow("weather_retrain", RETRAIN_TASKS, st.session_state.get("retrain_run_id"))
-    st.caption(
-        "Training logs the candidate run and model in MLflow. Compare evaluates the same immutable "
-        "dataset version and promotes it only when the validation guards beat the champion."
     )
-    st.caption(
-        "Automatic retraining remains separate: Grafana only calls Airflow after delayed "
-        "performance fails its gate, not from feature drift alone."
-    )
-    st.link_button("Open MLflow model registry", MLFLOW_URL, use_container_width=True)
 
 
 def _show_prediction(response: requests.Response) -> None:

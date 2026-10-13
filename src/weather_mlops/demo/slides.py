@@ -20,8 +20,8 @@ SLIDES: tuple[Slide, ...] = (
             "The live outcome stays on screen: a clear Yes or No and the rain probability.",
             "This page calls Nginx, which proxies /health and /predict/live_data.",
             "It uses basic auth hydrated from Vault. It never loads SUPABASE_KEY.",
-            "The three small panels below are the real Grafana request, error-rate, "
-            "and latency panels.",
+            "The two small panels below are the real Grafana request-rate and latency "
+            "panels for the last 5 minutes. They refresh every 5 seconds.",
         ),
     ),
     Slide(

@@ -280,8 +280,7 @@ CARD_IMAGES = {
 }
 
 
-def card_image(key):
-    filename, alt, kind, position = CARD_IMAGES[key]
+def image_data_uri(filename):
     path = IMAGE_DIR / filename
     if path.suffix == ".svg":
         mime = "image/svg+xml"
@@ -290,36 +289,57 @@ def card_image(key):
     else:
         mime = "image/jpeg"
     encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+    return f"data:{mime};base64,{encoded}"
+
+
+def card_image(key):
+    filename, alt, kind, position = CARD_IMAGES[key]
     return (
         f'<img class="future-photo is-{kind}" alt="{alt}" '
         f'style="object-position: {position}" '
-        f'src="data:{mime};base64,{encoded}">'
+        f'src="{image_data_uri(filename)}">'
+    )
+
+
+def make_demo_hero(slide):
+    return (
+        '<div class="demo-hero">'
+        '<img class="demo-hero-image" alt="Weather forecast dashboard illustration" '
+        'data-asset="live_demo_hero.png" '
+        f'src="{image_data_uri("live_demo_hero.png")}">'
+        '<div class="demo-hero-overlay">'
+        f'<h2 class="demo-hero-title" data-focus="title">{slide["title"]}</h2>'
+        "</div></div>"
     )
 
 
 def make_future(slide):
     cards = ""
     for number, card in enumerate(slide["cards"]):
-        image = card_image(card["icon"])
+        is_lead = number < 2
+        card_class = "future-card is-lead" if is_lead else "future-card is-compact"
+        visual = card_image(card["icon"]) if is_lead else (
+            f'<span class="future-index" aria-hidden="true">0{number + 1}</span>'
+        )
         cards = cards + (
-            f'<article class="future-card" data-focus="card-{number}">'
-            f"{image}"
+            f'<article class="{card_class}" data-focus="card-{number}">'
+            f"{visual}"
             f'<p class="future-name">{card["title"]}</p>'
             f'<p class="future-text">{card["text"]}</p>'
             "</article>"
         )
-    credit = (
-        '<p class="future-credit">Gauge photograph by In Transit, CC BY-SA 4.0. '
-        "Other photographs, Wikimedia Commons, CC0.</p>"
-    )
-    return make_title(slide) + f'<div class="future-grid">{cards}</div>' + credit
+    return make_title(slide) + f'<div class="future-grid">{cards}</div>'
 
 
 def make_closing(slide):
     return (
-        '<div class="cover">'
-        f'<h2 class="cover-title">{slide["title"]}</h2>'
-        '<p class="cover-lede">All nine lifecycle stages are in place.</p>'
+        '<div class="questions-closing">'
+        '<div class="questions-copy">'
+        '<p class="questions-kicker">Weather MLOps</p>'
+        f'<h2 class="questions-title" data-focus="title">{slide["title"]}</h2>'
+        '<p class="questions-thanks">Thank you</p>'
+        "</div>"
+        '<span class="questions-mark" aria-hidden="true">?</span>'
         "</div>"
     )
 
@@ -338,6 +358,8 @@ def make_body(slide):
         return make_flow(slide)
     elif layout == "metrics":
         return make_metrics(slide)
+    elif layout == "demo-hero":
+        return make_demo_hero(slide)
     elif layout == "script":
         return make_title(slide) + make_points(slide, tag="ol")
     elif layout == "future":

@@ -798,41 +798,32 @@ SECTIONS = [
             {
                 "id": "demo",
                 "title": "Live demo",
-                "layout": "script",
+                "layout": "demo-hero",
                 "stages": [],
                 "figure": None,
                 "lanes": [],
-                "points": [
-                    "Pick a station.",
-                    "Get tomorrow's forecast and the model that served it.",
-                    "Show the training run in MLflow.",
-                    "Show the nightly DAG in Airflow.",
-                ],
+                "points": [],
                 "links": [
                     ["Streamlit app", "src/weather_mlops/demo/app.py"],
                 ],
                 "notes": [
-                    "About 4 minutes, leaving 1 minute for next steps.",
-                    "Before the defense: make up, make monitoring, make airflow-up and make "
-                    "streamlit. On "
-                    "Gabriel's Mac, first stop Tailscale (it holds port 443) and Homebrew "
-                    "httpd (it holds 8080).",
-                    "Present the deck from the Streamlit container at 127.0.0.1:8501. The "
-                    "demo panel calls https://nginx, which only resolves inside Docker; a "
-                    "deck started with uv run on the Mac shows Gateway is down.",
-                    "1. The green line under this slide comes from /health through Nginx.",
-                    "2. Pick Sydney, click Predict from live weather. The API fetches "
-                    "today's weather and answers Rain or No rain with a probability.",
-                    "3. The caption says Served by rain_classifier.joblib: no champion "
-                    "exists yet, as Jonathan explained.",
-                    "4. MLflow on port 8080: experiment weather-rainfall-classifier, open "
-                    "the latest run, show params, metrics and the dataset_sha256 and "
-                    "git_commit tags. Then Models: the versions and the candidate alias.",
-                    "5. Airflow on port 8081, user admin, password in airflow/.env: open "
-                    "weather_pipeline and show the successful run executed on 25 Sep "
-                    "(Airflow names it scheduled__2026-09-23) in the graph view.",
-                    "If the network fails, say so and continue on the slides. Do not retry "
-                    "for more than 30 seconds.",
+                    "About 4 minutes. I will now leave the slides and switch to the live system.",
+                    "[LIVE APP] This is the user-facing path. We choose a station, fetch current "
+                    "weather, and receive a rain prediction through the same API that serves users.",
+                    "[PREDICTION] First, I select Sydney and run a live prediction. The result "
+                    "shows the forecast, probability, and model version. It proves the model is "
+                    "deployed, not only trained in a notebook.",
+                    "[MODEL VERSION] In MLflow, I show the matching training run: validation "
+                    "metrics, model parameters, versioned dataset hash, and Git commit. These "
+                    "artifacts trace a prediction to the exact experiment.",
+                    "[WORKFLOW] In Airflow, I show the successful pipeline. It ingests and "
+                    "validates data, trains the candidate, and registers it in MLflow. This makes "
+                    "the workflow a repeatable pipeline rather than a one-off manual run.",
+                    "[TRANSITION] The important point is the complete path: live prediction, "
+                    "traceable model version, and a repeatable pipeline. I will now return to the "
+                    "final next steps.",
+                    "[FALLBACK] If a service is unavailable, say so once and continue with the "
+                    "slides. Do not retry for more than 30 seconds.",
                 ],
             },
             {
@@ -847,42 +838,27 @@ SECTIONS = [
                     {
                         "icon": "kubernetes",
                         "title": "Scale on Kubernetes",
-                        "text": "API replicas that restart on failure and grow when traffic grows.",
+                        "text": "Run resilient API replicas and increase capacity as live traffic grows.",
                     },
                     {
                         "icon": "models",
                         "title": "Jev and transformers",
-                        "text": (
-                            "Past XGBoost: Jev, a System One classifier, "
-                            "and transformer forecasters."
-                        ),
+                        "text": "Compare Jev and transformer models with the current XGBoost baseline.",
                     },
                     {
                         "icon": "canary",
                         "title": "Canary release",
                         "text": (
-                            "Ten percent of live traffic tries the new model. "
-                            "Keep it only if recall holds."
+                            "Route ten percent of live traffic to the candidate. "
+                            "Promote it only when real recall holds."
                         ),
-                    },
-                    {
-                        "icon": "forecast",
-                        "title": "Tomorrow's forecast",
-                        "text": (
-                            "Add Open-Meteo's forecast for tomorrow. The model now sees only today."
-                        ),
-                    },
-                    {
-                        "icon": "threshold",
-                        "title": "Tuned cut-off",
-                        "text": "Set the decision threshold on validation so recall reaches 0.75.",
                     },
                     {
                         "icon": "rollback",
-                        "title": "Shadow, then rollback",
+                        "title": "Shadow evaluation and rollback",
                         "text": (
-                            "Score the candidate beside the champion. "
-                            "Point the alias back if recall drops."
+                            "Score candidates beside the champion. Monitor real recall and restore "
+                            "the previous champion when it drops."
                         ),
                     },
                 ],
@@ -894,30 +870,27 @@ SECTIONS = [
                     ["card-1"],
                     ["card-2"],
                     ["card-3"],
-                    ["card-4"],
-                    ["card-5"],
                     [],
                 ],
                 "notes": [
-                    "[TITLE] Before your questions, where this system goes next.",
-                    "[1. KUBERNETES] One: leave the laptop. Kubernetes runs several copies of "
-                    "the API. A failed copy restarts, and we add copies when traffic grows.",
-                    "[2. JEV AND TRANSFORMERS] Two: what we serve today is XGBoost on today's "
-                    "weather. Next we would try Jev, a System One model: it classifies into "
-                    "a fixed set of answers and returns a calibrated probability. Alongside "
-                    "that, transformer models that read weather as a sequence.",
-                    "[3. CANARY] Three: a canary release. Nginx sends ten percent of real "
-                    "traffic to the new champion first, and we keep it only if its real "
-                    "recall holds.",
-                    "[4. FORECAST FEATURES] Four: our model only sees today's weather. "
-                    "Open-Meteo also forecasts tomorrow; adding that forecast as features "
-                    "should be our biggest gain on the model we have now.",
-                    "[5. THRESHOLD] Five: today we cut at zero point five. We would tune the "
-                    "threshold on validation to reach recall zero point seven five.",
-                    "[6. SHADOW AND ROLLBACK] Six: score the candidate in shadow, next to the "
-                    "champion. If live recall drops, point the champion alias back at the "
-                    "previous version. The API picks it up on the next prediction.",
-                    "[NEXT: QUESTIONS] Thank you. We are happy to take your questions.",
+                    "[TITLE] About 1 minute. To close, we built a solid MLOps base for weather "
+                    "prediction. These four additions would make it more useful beyond a laptop demo.",
+                    "[1. KUBERNETES] First, move beyond local Docker. Kubernetes can restart a "
+                    "failed API replica and add capacity as traffic grows, making the system more "
+                    "robust at production scale.",
+                    "[2. JEV AND TRANSFORMERS] Second, XGBoost is a strong baseline, but we should "
+                    "compare it with Jev, other System One approaches, and transformer models. "
+                    "These alternatives can add inference cost, so we need to test whether improved "
+                    "forecast quality earns that cost.",
+                    "[3. CANARY] Third, when newer data leads to a retrained or fine-tuned candidate, "
+                    "we should not replace the production model in one step. A canary release sends "
+                    "a small fraction of real traffic to it and checks its observed quality.",
+                    "[4. SHADOW EVALUATION AND ROLLBACK] In parallel, shadow evaluation scores a "
+                    "candidate without returning its prediction to users. Continuous monitoring gives "
+                    "us evidence before promotion; if quality falls, the champion alias moves back to "
+                    "the previous version.",
+                    "[NEXT: QUESTIONS] These are the steps that turn a solid base into a scalable, "
+                    "safe production system. Thank you. We are happy to take your questions.",
                 ],
             },
             {
@@ -930,6 +903,9 @@ SECTIONS = [
                 "points": [],
                 "links": [],
                 "notes": [
+                    "[QUESTIONS] Thank you. We built a solid MLOps base for weather prediction. "
+                    "The next steps are scaling, model evaluation, and safe monitored rollouts. "
+                    "We are happy to take your questions.",
                     "Likely questions: the 2017 to 2026 gap, recall below the gate, "
                     "rollback with only a latest tag, the self-signed certificate.",
                     "Rollback: point the champion alias at the previous version in MLflow. "

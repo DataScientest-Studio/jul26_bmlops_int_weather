@@ -265,6 +265,66 @@ h2 {
     margin-top: 0.3rem;
 }
 
+.health-evidence {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.8rem;
+    margin: 1.25rem 0 1.45rem;
+}
+
+.health-evidence__card {
+    min-height: 11.4rem;
+    padding: 1.05rem 1.1rem;
+    border: 1px solid #1D3445;
+    border-top: 4px solid #7EC8D4;
+    background: linear-gradient(145deg, #0B1B27, #0A1822);
+    box-sizing: border-box;
+}
+
+.health-evidence__card--warning {
+    border-top-color: #E07A5F;
+}
+
+.health-evidence__card--waiting {
+    border-top-color: #F2C14E;
+}
+
+.health-evidence__label,
+.health-evidence__value,
+.health-evidence__detail {
+    margin: 0 !important;
+    font-family: "IBM Plex Sans", sans-serif;
+}
+
+.health-evidence__label {
+    color: #7EC8D4;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.health-evidence__card h2 {
+    margin: 0.7rem 0 0.35rem !important;
+    color: #E8EEF2 !important;
+    font-size: clamp(1.1rem, 1.55vw, 1.35rem) !important;
+    line-height: 1.1 !important;
+}
+
+.health-evidence__value {
+    color: #F2C14E;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 1rem;
+    font-weight: 500;
+}
+
+.health-evidence__detail {
+    margin-top: 0.7rem !important;
+    color: #B7C4CC;
+    font-size: 0.85rem;
+    line-height: 1.35;
+}
+
 [data-testid="stMetric"] {
     padding: 0.25rem 1.1rem 0.45rem;
 }
@@ -286,6 +346,14 @@ h2 {
 }
 
 @media (max-width: 700px) {
+    .health-evidence {
+        grid-template-columns: 1fr;
+    }
+
+    .health-evidence__card {
+        min-height: auto;
+    }
+
     .dag {
         margin-inline: -0.2rem;
         padding-inline: 0.75rem;
