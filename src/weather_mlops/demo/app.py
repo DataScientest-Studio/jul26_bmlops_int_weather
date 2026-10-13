@@ -210,8 +210,8 @@ def _render_grafana_panels(
 def _render_live_activity() -> None:
     st.markdown("<h2>Live API activity</h2>", unsafe_allow_html=True)
     st.caption(
-        "Request rate and latency for the last 5 minutes. Make a forecast and watch "
-        "the request appear; these panels refresh every 5 seconds."
+        "Health, live prediction, and training calls for the last 5 minutes. "
+        "The Prometheus scrape stays off these panels. They refresh every 5 seconds."
     )
     _render_grafana_panels(GRAFANA_API_URL, (1, 3))
 
@@ -531,9 +531,8 @@ def _render_model_training(api_url: str) -> None:
         unsafe_allow_html=True,
     )
     st.caption(
-        "Requests per endpoint and average serving call time for the last 5 minutes. "
-        "The training call appears in request traffic when it completes; its own duration "
-        "is shown with the result."
+        "Health, live prediction, and training calls for the last 5 minutes. "
+        "/train shows in the request rate and in the duration panel when the call finishes."
     )
     _render_grafana_panels(GRAFANA_API_URL, (1, 3), height=190)
 

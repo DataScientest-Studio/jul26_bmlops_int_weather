@@ -113,7 +113,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum by (handler) (rate(http_requests_total[1m]))",
+          "expr": "sum by (handler) (rate(http_requests_total{handler=~\"/health|/predict|/predict/live_data|/train\"}[1m]))",
           "legendFormat": "{{handler}}",
           "range": true,
           "refId": "A"
@@ -315,13 +315,13 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum by (handler) (rate(http_request_duration_seconds_sum{handler!=\"/train\"}[5m])) / sum by (handler) (rate(http_request_duration_seconds_count{handler!=\"/train\"}[5m]))",
+          "expr": "sum by (handler) (rate(http_request_duration_seconds_sum{handler=~\"/health|/predict|/predict/live_data|/train\"}[5m])) / sum by (handler) (rate(http_request_duration_seconds_count{handler=~\"/health|/predict|/predict/live_data|/train\"}[5m]))",
           "legendFormat": "{{handler}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Average request duration (without /train)",
+      "title": "Average request duration",
       "type": "timeseries"
     }
   ],
