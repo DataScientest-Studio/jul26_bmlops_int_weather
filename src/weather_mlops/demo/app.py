@@ -449,7 +449,39 @@ def _request_model_training(
     return payload
 
 
-def _training_result_markup(payload: dict, *, elapsed_seconds: float) -> str:
+def _prepare_training_split():
+    """Rebuild the processed split when DVC raw data is newer than that split."""
+
+    from weather_mlops.config.settings import PROJECT_ROOT
+    from weather_mlops.data.split_status import (
+        ensure_fresh_split,
+        incremental_pointer_md5,
+        load_dvc_lock,
+    )
+
+    pointer = settings.raw_incremental_dir.with_suffix(".dvc")
+    return ensure_fresh_split(
+        lock=load_dvc_lock(PROJECT_ROOT / "dvc.lock"),
+        incremental_md5=incremental_pointer_md5(pointer),
+        processed_dir=settings.processed_data_dir,
+    )
+
+
+def _split_training_note(preparation) -> str:
+    if preparation.rebuilt:
+        return (
+            "DVC raw data was newer than the split. Merged the raw files, "
+            "rebuilt the split, then trained."
+        )
+    return "The processed split matches the newest DVC raw data. Trained on that split."
+
+
+def _training_result_markup(
+    payload: dict,
+    *,
+    elapsed_seconds: float,
+    split_note: str = "",
+) -> str:
     """Turn the returned validation metrics into one projection-friendly result."""
 
     train = payload["train"]
@@ -474,7 +506,8 @@ def _training_result_markup(payload: dict, *, elapsed_seconds: float) -> str:
         '<p class="training-result__comparison">Training ROC-AUC '
         f"{float(train['roc_auc']):.1%} &rarr; validation ROC-AUC "
         f"{float(validation['roc_auc']):.1%}</p>"
-        "</section>"
+        + (f'<p class="training-result__comparison">{escape(split_note)}</p>' if split_note else "")
+        + "</section>"
     )
 
 
@@ -486,7 +519,10 @@ def _render_model_training(api_url: str) -> None:
         "judge it.</p>",
         unsafe_allow_html=True,
     )
-    st.caption("POST /train → fit XGBoost → validate → return metrics")
+    st.caption(
+        "Checks the DVC raw pointer. Rebuilds the split when it is stale, "
+        "then POST /train → fit XGBoost → validate → return metrics."
+    )
 
     action = st.empty()
     result_panel = st.empty()
@@ -505,14 +541,16 @@ def _render_model_training(api_url: str) -> None:
     if action.button("Train model now", type="primary", use_container_width=True):
         started = time.perf_counter()
         try:
-            with st.spinner("Training XGBoost through POST /train…"):
+            with st.spinner("Checking the DVC split, then training…"):
+                preparation = _prepare_training_split()
                 payload = _request_model_training(api_url, auth=API_AUTH)
             result = {
                 "payload": payload,
                 "elapsed_seconds": time.perf_counter() - started,
+                "split_note": _split_training_note(preparation),
             }
-            st.session_state.training_result = result
-        except (requests.RequestException, KeyError, TypeError, ValueError) as exc:
+            st.session_state["training_result"] = result
+        except (requests.RequestException, OSError, KeyError, TypeError, ValueError) as exc:
             st.error(f"Training failed: {exc}")
             result = None
 
@@ -521,6 +559,7 @@ def _render_model_training(api_url: str) -> None:
             _training_result_markup(
                 result["payload"],
                 elapsed_seconds=float(result["elapsed_seconds"]),
+                split_note=str(result.get("split_note", "")),
             ),
             unsafe_allow_html=True,
         )

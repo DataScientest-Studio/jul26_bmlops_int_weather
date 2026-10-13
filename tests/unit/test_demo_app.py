@@ -114,6 +114,79 @@ def test_training_result_makes_validation_quality_the_visible_outcome() -> None:
     assert "86.0%" in markup
 
 
+def test_training_result_reports_whether_the_split_was_rebuilt() -> None:
+    payload = {
+        "train": {"accuracy": 0.91, "precision": 0.8, "recall": 0.84, "f1": 0.82, "roc_auc": 0.93},
+        "validation": {
+            "accuracy": 0.86,
+            "precision": 0.74,
+            "recall": 0.78,
+            "f1": 0.76,
+            "roc_auc": 0.88,
+        },
+    }
+
+    markup = demo_app._training_result_markup(
+        payload,
+        elapsed_seconds=3.24,
+        split_note="DVC raw data was newer than the split. Merged the raw files.",
+    )
+
+    assert "DVC raw data was newer than the split" in markup
+
+
+def test_training_refreshes_a_stale_split_before_the_api_call(monkeypatch) -> None:
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+
+    calls: list[str] = []
+
+    class FakeStreamlit:
+        session_state: dict = {}
+
+        def markdown(self, *args, **kwargs) -> None:
+            return None
+
+        def caption(self, *args, **kwargs) -> None:
+            return None
+
+        def empty(self):
+            return self
+
+        def button(self, *args, **kwargs) -> bool:
+            return True
+
+        def spinner(self, *args, **kwargs):
+            return nullcontext()
+
+        def error(self, *args, **kwargs) -> None:
+            return None
+
+    monkeypatch.setattr(demo_app, "st", FakeStreamlit())
+    monkeypatch.setattr(demo_app, "_render_grafana_panels", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        demo_app,
+        "_prepare_training_split",
+        lambda: calls.append("prepare") or SimpleNamespace(rebuilt=False),
+    )
+    monkeypatch.setattr(
+        demo_app,
+        "_request_model_training",
+        lambda *args, **kwargs: (
+            calls.append("train")
+            or {
+                "train": {"roc_auc": 0.9},
+                "validation": {"recall": 0.8, "roc_auc": 0.85, "accuracy": 0.84},
+            }
+        ),
+    )
+
+    demo_app._render_model_training("https://nginx")
+
+    assert calls == ["prepare", "train"]
+    assert "newest DVC raw data" in FakeStreamlit.session_state["training_result"]["split_note"]
+
+
 def test_training_activity_is_rendered_before_the_blocking_train_action(monkeypatch) -> None:
     events = []
     slots = 0
