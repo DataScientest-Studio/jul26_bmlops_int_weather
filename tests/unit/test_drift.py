@@ -472,6 +472,7 @@ def test_drift_job_keeps_the_local_path_when_mlflow_is_off(tmp_path: Path, monke
     html = tmp_path / "reports" / "feature_drift.html"
     assert catalog.rows[0]["report_html_path"] == str(html)
 
+
 def test_auc_drop_below_champion_recommends_retrain() -> None:
     decision = drift.performance_decision(
         {"recall": 0.80, "roc_auc": 0.84},
@@ -481,6 +482,7 @@ def test_auc_drop_below_champion_recommends_retrain() -> None:
     assert decision["retrain"] is True
     assert decision["recall_failed"] is False
     assert decision["auc_failed"] is True
+
 
 def test_champion_validation_roc_auc_reads_the_alias() -> None:
     class Version:
@@ -501,6 +503,7 @@ def test_champion_validation_roc_auc_reads_the_alias() -> None:
             return Run()
 
     assert drift.champion_validation_roc_auc(Client()) == 0.871
+
 
 def test_live_gate_compares_delayed_auc_with_champion(tmp_path: Path, monkeypatch) -> None:
     reference_path = tmp_path / "X_train.csv"
@@ -541,7 +544,9 @@ def test_live_gate_compares_delayed_auc_with_champion(tmp_path: Path, monkeypatc
     monkeypatch.setattr(
         drift,
         "upload_report_copy",
-        lambda html_path, client=None: "s3://weather-mlops-mlflow/evidently/latest/feature_drift.html",
+        lambda html_path, client=None: (
+            "s3://weather-mlops-mlflow/evidently/latest/feature_drift.html"
+        ),
     )
 
     result = drift.run_drift_job(reference_path=reference_path)
@@ -552,6 +557,7 @@ def test_live_gate_compares_delayed_auc_with_champion(tmp_path: Path, monkeypatc
     assert result["mlflow_run_id"] == "run-abc"
     assert {row["scope"] for row in stored} == {"feature_drift", "performance"}
     assert all(row["mlflow_run_id"] == "run-abc" for row in stored)
+
 
 def test_simulate_defense_drift_arms_the_gate_without_training(monkeypatch) -> None:
     captured = {}
