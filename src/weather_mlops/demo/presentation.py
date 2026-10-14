@@ -327,7 +327,7 @@ SECTIONS = [
             },
             {
                 "id": "tracking",
-                "title": "Experiment tracking: every model and every day on record",
+                "title": "Experiment tracking: every model and every day",
                 "layout": "tracking",
                 "stages": ["tracking"],
                 "figure": None,
