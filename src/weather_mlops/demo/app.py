@@ -40,7 +40,8 @@ NOTES_STYLES = (
 # the point buttons only exist for the keyboard, the audience does not see them
 HIDDEN_BUTTONS = ".st-key-cue_back, .st-key-cue_next { display: none; }"
 # keys: n or right arrow = next, p or left arrow = previous, s = speaker notes,
-# j or down arrow = highlight the next point, k or up arrow = the previous point
+# j or down arrow = highlight the next point, k or up arrow = the previous point.
+# the notes window loads the same keys, so the talk can be driven from either one
 DECK_SHORTCUTS = """
 <script>
 if (!window.__deckShortcuts) {
@@ -66,7 +67,8 @@ if (!window.__deckShortcuts) {
       event.preventDefault();
       clickButton("Previous point");
     }
-    if (key === "s") {
+    const notesView = new URLSearchParams(window.location.search).get("view") === "notes";
+    if (key === "s" && !notesView) {
       window.open(window.location.pathname + "?view=notes", "weather-speaker-notes");
     }
   });
@@ -610,63 +612,70 @@ def _render_prediction_result() -> None:
 
 @st.cache_resource
 def _live_position():
-    # shared by all browser windows, so the notes window follows the deck
+    # shared by all browser windows: the deck and the notes window both move it
+    # and both draw from it, so whichever window you use the other one follows
     return {"index": 0, "cue": -1}
 
 
-def _step_deck(step):
-    last = len(all_slides()) - 1
-    new_index = st.session_state.deck + step
-    if new_index < 0:
-        new_index = 0
-    if new_index > last:
-        new_index = last
-    st.session_state.deck = new_index
-    st.session_state.cue = -1
+def _step_position(position, slide_step, cue_step):
+    last_slide = len(all_slides()) - 1
+    index = position["index"] + slide_step
+    if index < 0:
+        index = 0
+    if index > last_slide:
+        index = last_slide
+    cue = position["cue"] + cue_step
+    if slide_step != 0:
+        cue = -1
+    section, slide = all_slides()[index]
+    last_cue = len(slide["notes"]) - 1
+    if cue < -1:
+        cue = -1
+    if cue > last_cue:
+        cue = last_cue
+    return {"index": index, "cue": cue}
 
 
-def _reset_cue():
-    st.session_state.cue = -1
+def _step_talk(slide_step, cue_step):
+    position = _live_position()
+    position.update(_step_position(position, slide_step, cue_step))
 
 
-def _step_cue(step):
-    section, slide = all_slides()[st.session_state.deck]
-    last = len(slide["notes"]) - 1
-    new_cue = st.session_state.cue + step
-    if new_cue < -1:
-        new_cue = -1
-    if new_cue > last:
-        new_cue = last
-    st.session_state.cue = new_cue
+def _choose_slide():
+    _live_position().update({"index": st.session_state.deck, "cue": -1})
+
+
+@st.fragment(run_every=1)
+def _follow_notes(index, cue):
+    # redraw the deck when the slide was moved from the notes window
+    position = _live_position()
+    if position["index"] != index or position["cue"] != cue:
+        st.rerun()
 
 
 def _render_presentation():
     st.markdown(f"<style>{DECK_STYLES}{DECK_WIDTH}{HIDDEN_BUTTONS}</style>", unsafe_allow_html=True)
     st.html(DECK_SHORTCUTS, unsafe_allow_javascript=True)
     slides = all_slides()
-    if "deck" not in st.session_state:
-        st.session_state.deck = 0
-    if "cue" not in st.session_state:
-        st.session_state.cue = -1
-    index = st.session_state.deck
-    cue = st.session_state.cue
-    _live_position()["index"] = index
-    _live_position()["cue"] = cue
+    index = _live_position()["index"]
+    cue = _live_position()["cue"]
+    st.session_state.deck = index
     st.markdown(render_slide(index, cue), unsafe_allow_html=True)
 
     col1, col2, col3 = st.columns([1, 4, 1], vertical_alignment="center")
-    col1.button("Previous", on_click=_step_deck, args=(-1,), disabled=index == 0)
+    col1.button("Previous", on_click=_step_talk, args=(-1, 0), disabled=index == 0)
     col2.selectbox(
         "Go to slide",
         options=list(range(len(slides))),
         format_func=slide_label,
         key="deck",
-        on_change=_reset_cue,
+        on_change=_choose_slide,
         label_visibility="collapsed",
     )
-    col3.button("Next", on_click=_step_deck, args=(1,), disabled=index == len(slides) - 1)
-    st.button("Previous point", key="cue_back", on_click=_step_cue, args=(-1,))
-    st.button("Next point", key="cue_next", on_click=_step_cue, args=(1,))
+    col3.button("Next", on_click=_step_talk, args=(1, 0), disabled=index == len(slides) - 1)
+    st.button("Previous point", key="cue_back", on_click=_step_talk, args=(0, -1))
+    st.button("Next point", key="cue_next", on_click=_step_talk, args=(0, 1))
+    _follow_notes(index, cue)
 
 
 @st.fragment(run_every=1)
@@ -692,6 +701,20 @@ def _follow_deck():
             css = ' class="is-active"'
         notes = notes + f"<li{css}>{note}</li>"
     st.markdown(f'<ul class="speaker-notes">{notes}</ul>', unsafe_allow_html=True)
+    # same labels as on the deck, so the keyboard shortcuts work here too
+    col1, col2, col3, col4 = st.columns(4)
+    col1.button(
+        "Previous", key="notes_back", on_click=_step_talk, args=(-1, 0), disabled=index == 0
+    )
+    col2.button("Previous point", key="notes_cue_back", on_click=_step_talk, args=(0, -1))
+    col3.button("Next point", key="notes_cue_next", on_click=_step_talk, args=(0, 1))
+    col4.button(
+        "Next",
+        key="notes_next",
+        on_click=_step_talk,
+        args=(1, 0),
+        disabled=index == len(slides) - 1,
+    )
     if index + 1 < len(slides):
         next_section, next_slide = slides[index + 1]
         text = f"Next: {next_slide['title']}."
@@ -699,14 +722,16 @@ def _follow_deck():
             text = text + f" Hand over to {next_section['presenter']}."
         st.caption(text)
     st.caption(
-        "Keys on the deck window: N or → next, P or ← previous, "
-        "J or ↓ highlight the next point, K or ↑ the previous one, S reopens these notes."
+        "Keys work in this window and on the deck: N or → next, P or ← previous, "
+        "J or ↓ highlight the next point, K or ↑ the previous one, "
+        "S on the deck reopens these notes."
     )
 
 
 def _render_notes():
     # open ?view=notes in a window you do not share
     st.markdown(f"<style>{NOTES_STYLES}</style>", unsafe_allow_html=True)
+    st.html(DECK_SHORTCUTS, unsafe_allow_javascript=True)
     _follow_deck()
 
 
@@ -754,6 +779,8 @@ def _apply_menu_navigation(state) -> None:
 
 def _sync_menu_navigation() -> None:
     _apply_menu_navigation(st.session_state)
+    if st.session_state["menu"] != "Demo":
+        _choose_slide()
 
 
 def main() -> None:

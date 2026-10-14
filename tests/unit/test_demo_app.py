@@ -266,3 +266,43 @@ def test_starting_a_new_demo_clears_the_previous_training_result() -> None:
 
     assert state["slide"] == 0
     assert "training_result" not in state
+
+
+def test_moving_to_another_slide_starts_with_no_point_lit() -> None:
+    position = demo_app._step_position({"index": 0, "cue": 1}, 1, 0)
+
+    assert position == {"index": 1, "cue": -1}
+
+
+def test_talk_position_stays_inside_the_deck_and_the_notes() -> None:
+    last_slide = len(all_slides()) - 1
+    last_cue = len(all_slides()[0][1]["notes"]) - 1
+
+    assert demo_app._step_position({"index": 0, "cue": -1}, -1, 0)["index"] == 0
+    assert demo_app._step_position({"index": last_slide, "cue": -1}, 1, 0)["index"] == last_slide
+    assert demo_app._step_position({"index": 0, "cue": -1}, 0, -1)["cue"] == -1
+    assert demo_app._step_position({"index": 0, "cue": last_cue}, 0, 1)["cue"] == last_cue
+
+
+def test_notes_window_drives_the_deck() -> None:
+    import streamlit as st
+    from streamlit.testing.v1 import AppTest
+
+    st.cache_resource.clear()
+    deck = AppTest.from_file(demo_app.__file__).run()
+    notes = AppTest.from_file(demo_app.__file__)
+    notes.query_params["view"] = "notes"
+    notes.run()
+
+    notes.button(key="notes_next").click().run()
+    notes.button(key="notes_cue_next").click().run()
+    deck.run()
+
+    assert deck.selectbox(key="deck").value == 1
+    assert any("Slide 2 of" in block.value for block in notes.markdown)
+    assert any('<li class="is-active">' in block.value for block in notes.markdown)
+
+    deck.button(key="cue_back").click().run()
+    notes.run()
+
+    assert not any('<li class="is-active">' in block.value for block in notes.markdown)
