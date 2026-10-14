@@ -70,7 +70,8 @@ SECTIONS = [
                         ],
                     },
                 ],
-                "caption": "Docker Compose: 11 services, 8 built from our 7 Dockerfiles. "
+                "caption": "Docker Compose: 11 services — 8 built from our 7 Dockerfiles "
+                "(api and baseline share one), 3 public images. "
                 "Airflow 2.8.1 runs as a separate stack.",
                 "points": [],
                 "links": [
