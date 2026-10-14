@@ -41,13 +41,14 @@ SECTIONS = [
                     ["team"],
                 ],
                 "notes": [
-                    "[TEAM NAMES] Good morning. We are Gabriel, Jonathan, Thomas and Ziad.",
-                    "[TITLE] Our task is a binary classification: will it rain tomorrow at a "
-                    "given Australian weather station?",
-                    "[SUBTITLE] The model is the small part. Today we show the system around it.",
-                    "[TEAM NAMES] I start with the architecture, the problem, drift and our "
-                    "gateway. Then Jonathan presents data and model, Thomas serving and "
-                    "operations, and Ziad the live demo.",
+                    "Good morning. We're Gabriel, Jonathan, Thomas and Ziad.",
+                    "We started with a simple question: will it rain tomorrow at a weather "
+                    "station in Australia?",
+                    "Training a model for that is the easy part, so today we want to show you "
+                    "everything around it.",
+                    "I'll cover the architecture, the problem, drift and our gateway. After me, "
+                    "Jonathan and Thomas take you through the rest, and Ziad ends with a live "
+                    "demo.",
                 ],
             },
             {
@@ -60,72 +61,16 @@ SECTIONS = [
                     {
                         "name": "Closed loop: from prediction to new champion",
                         "steps": [
-                            "Prediction logged",
-                            "Real outcome arrives",
-                            "Drift and recall check",
-                            "Grafana alert",
-                            "Airflow retrains",
-                            "Gate moves @champion",
+                            ["Supabase", "Prediction logged"],
+                            ["Open-Meteo", "Real outcome arrives"],
+                            ["Evidently", "Drift and recall check"],
+                            ["Grafana", "Grafana alert"],
+                            ["Airflow", "Airflow retrains"],
+                            ["MLflow", "Gate moves @champion"],
                         ],
                     },
                 ],
-                "zones": [
-                    {
-                        "name": "Data sources",
-                        "tools": ["Kaggle", "Open-Meteo"],
-                        "points": [
-                            "WeatherAUS seed, 2007 to 2017",
-                            "Open-Meteo archive API for new days",
-                            "Same schema, 49 stations",
-                        ],
-                    },
-                    {
-                        "name": "Orchestration",
-                        "tools": ["Airflow"],
-                        "points": [
-                            "Daily DAG: ingest, preprocess, Evidently",
-                            "Retrain DAG: train, evaluate, compare",
-                            "Each task runs in its own container",
-                        ],
-                    },
-                    {
-                        "name": "Storage and lineage",
-                        "tools": ["Supabase", "DVC", "Vault"],
-                        "points": [
-                            "Postgres: data, catalog, predictions",
-                            "S3: dataset snapshots, model artifacts",
-                            "Supabase Vault: app secrets",
-                        ],
-                    },
-                    {
-                        "name": "Training and registry",
-                        "tools": ["MLflow", "XGBoost"],
-                        "points": [
-                            "Every run tracked with data hash and commit",
-                            "New model gets @candidate",
-                            "Only the gate moves @champion",
-                        ],
-                    },
-                    {
-                        "name": "Serving",
-                        "tools": ["Nginx", "FastAPI", "Streamlit"],
-                        "points": [
-                            "Nginx: TLS, rate limits",
-                            "FastAPI: login, serves @champion",
-                            "New champion live without restart",
-                        ],
-                    },
-                    {
-                        "name": "Monitoring",
-                        "tools": ["Prometheus", "Grafana", "Evidently"],
-                        "points": [
-                            "API metrics every 15 s",
-                            "Daily job: drift and real recall",
-                            "Grafana: 2 dashboards, 7 alerts",
-                        ],
-                    },
-                ],
-                "caption": "Docker Compose: 11 services, 7 built from our own Dockerfiles. "
+                "caption": "Docker Compose: 11 services, 8 built from our 7 Dockerfiles. "
                 "Airflow 2.8.1 runs as a separate stack.",
                 "points": [],
                 "links": [
@@ -146,30 +91,24 @@ SECTIONS = [
                     [],
                 ],
                 "notes": [
-                    "[WHOLE SLIDE] This is our overall software architecture. Everything runs "
-                    "in Docker Compose, and Airflow runs as a separate stack.",
-                    "[DATA SOURCES] We use the WeatherAUS dataset from Kaggle as our labelled "
-                    "history, and we extend it with the Open-Meteo archive API in the same "
-                    "schema.",
-                    "[ORCHESTRATION] Airflow runs two DAGs. Every evening, weather_pipeline "
-                    "fetches new weather, cleans it, fills in the real outcome of past "
-                    "predictions, then runs our monitoring job. weather_retrain trains, "
-                    "evaluates, and compares with the champion.",
-                    "[STORAGE AND LINEAGE] We keep our data in Supabase Postgres, dataset "
-                    "snapshots in DVC, and secrets in Supabase Vault.",
-                    "[TRAINING AND REGISTRY] We track every training run in MLflow, with its "
-                    "dataset hash and git commit. A new model gets the candidate alias; only "
-                    "our promotion gate moves the champion alias.",
-                    "[SERVING] Nginx is the single entry point. FastAPI always serves the "
-                    "current champion, so a promotion goes live without a restart.",
-                    "[MONITORING] Prometheus and Grafana watch the API, and Evidently checks "
-                    "feature drift.",
-                    "[CLOSED LOOP STRIP] The bottom line is our closed loop. A few days after "
-                    "each prediction, we learn the real outcome and compute the real recall. "
-                    "If it falls below zero point seven five, Grafana triggers "
-                    "weather_retrain. We retrain on real recall, not on drift alone, because "
-                    "drift does not prove the model got worse.",
-                    "[NEXT SLIDE] So, why is this problem harder than it looks?",
+                    "Let's start with the big picture. The whole system runs in Docker Compose.",
+                    "It all begins with data: Kaggle's Australian weather history, plus new days "
+                    "from the Open-Meteo API, in the same format.",
+                    "To keep this running on its own, Airflow runs two pipelines: a daily one, "
+                    "and one that retrains the model.",
+                    "Every day, the new data, the real outcomes and the drift results go into "
+                    "Supabase Postgres. Dataset snapshots go to storage, and our secrets stay in "
+                    "Supabase Vault.",
+                    "When we retrain, MLflow keeps track of every model, and a new one only "
+                    "becomes champion if it passes our quality gate (a recall of at least 0.75 on"
+                    " validation, and a better ROC AUC than the current champion).",
+                    "Users reach the champion through Nginx and FastAPI, and every prediction "
+                    "they get is saved in Postgres.",
+                    "Once it's live, we keep an eye on it: Prometheus and Grafana watch the API, "
+                    "and Evidently checks for drift every day.",
+                    "And that closes the loop. When the real weather comes in and recall falls "
+                    "below 0.75, Grafana triggers a retrain.",
+                    "So why do we need all this? Because the problem is harder than it looks.",
                 ],
             },
             {
@@ -178,6 +117,8 @@ SECTIONS = [
                 "layout": "hero",
                 "stages": [],
                 "figure": ["77.1%", "test accuracy of the majority-class baseline (always no)"],
+                # share of test days, from the facts below
+                "split": [["No rain", 77.1], ["Rain", 22.9]],
                 "lanes": [],
                 "points": [
                     "Target: RainTomorrow, binary. One XGBoost model for 49 stations.",
@@ -203,22 +144,14 @@ SECTIONS = [
                     ["point-2"],
                 ],
                 "notes": [
-                    "[TARGET (bullet 1)] The input is one row of the CSV: one day at one "
-                    "station, with twenty weather columns, like minimum temperature, "
-                    "humidity at three p.m., pressure, wind, and whether it rained today. "
-                    "The output is the probability of rain tomorrow.",
-                    "[77.1% + TABLE: Positive class, Baseline recall] Only twenty-three "
-                    "percent of test days are rainy. So the baseline that always says no "
-                    "reaches seventy-seven percent accuracy, with a recall of zero. Our "
-                    "candidate run reaches about eighty percent. Accuracy cannot tell a "
-                    "useful model from a useless one.",
-                    "[PROMOTION METRIC (bullet 2) + TABLE: Candidate ROC-AUC] So we promote "
-                    "on validation ROC-AUC, which measures ranking and does not depend on a "
-                    "threshold. The constant baseline scores zero point five; this run scores "
-                    "zero point eight seven on the test set.",
-                    "[GUARDRAIL (bullet 3)] And we add a guardrail: validation recall of at "
-                    "least zero point seven five, because a missed rainy day costs more than "
-                    "a false alarm.",
+                    "For each prediction, we take one station on one day, with 20 weather "
+                    "measurements, and return the chance of rain tomorrow.",
+                    "The tricky part is that only 23% of days are rainy. In other words, a "
+                    "model that always says no is 77% accurate, and never catches a rainy day.",
+                    "So we don't judge on accuracy. We pick models on ROC AUC, and ours scores "
+                    "0.87.",
+                    "Recall also has to stay above 0.75, because missing a rainy day hurts more"
+                    " than a false alarm.",
                 ],
             },
             {
@@ -227,6 +160,8 @@ SECTIONS = [
                 "layout": "hero",
                 "stages": [],
                 "figure": ["0.87 to 0.70", "ROC-AUC, Australian test set vs all Singapore days"],
+                # the facts are ROC-AUC scores, drawn as bars
+                "chart": "bars",
                 "lanes": [],
                 "points": [
                     "Label shift: rain tomorrow on 82.6% of Singapore days, 21.9% in Australia.",
@@ -248,23 +183,17 @@ SECTIONS = [
                     ["title"],
                     ["point-0", "point-1"],
                     ["hero"],
-                    ["fact-0", "fact-1", "fact-2", "fact-3"],
+                    ["fact-0", "fact-1", "fact-2", "fact-3", "chart-note"],
                     ["point-2"],
                 ],
                 "notes": [
-                    "[TITLE] To test drift on real data, we took a much rainier place with "
-                    "the same schema: Singapore, eleven years from Open-Meteo.",
-                    "[LABEL SHIFT + COVARIATE SHIFT (bullets 1-2)] Two shifts at once. It "
-                    "rains the next day on eighty-three percent of Singapore days, against "
-                    "twenty-two percent in Australia. And Evidently flags all five monitored "
-                    "features.",
-                    "[0.87 TO 0.70] The ROC-AUC falls from zero point eight seven to zero "
-                    "point seven.",
-                    "[TABLE: 0.641, 0.703, 0.708, 0.867] On a temporal split, retraining with "
-                    "Singapore lifts its score from zero point six four to zero point seven, "
-                    "and Australia stays at zero point eight seven.",
-                    "[RETRAINING RECOVERS (bullet 3)] So retraining recovers only part of the "
-                    "loss. This was an offline experiment; the served model stays Australian.",
+                    "Then we asked: what happens when the weather changes? So we took the model"
+                    " to Singapore, which is much rainier but has the same data format.",
+                    "It rains there on 83% of days, and Evidently flags all five features we "
+                    "monitor.",
+                    "And the model suffers: ROC AUC drops from 0.87 to 0.70.",
+                    "Retraining on Singapore data helps, from 0.64 up to 0.70.",
+                    "But it only wins back part of the loss, and that's why we keep monitoring.",
                 ],
             },
             {
@@ -277,10 +206,10 @@ SECTIONS = [
                     {
                         "name": "Every external request",
                         "steps": [
-                            "TLS 1.2/1.3 on 443",
-                            "limit_req per IP",
-                            "Basic auth (FastAPI)",
-                            "FastAPI",
+                            ["Nginx", "TLS 1.2/1.3 on 443"],
+                            ["Nginx", "limit_req per IP"],
+                            ["FastAPI", "Basic auth (FastAPI)"],
+                            ["FastAPI", "FastAPI"],
                         ],
                     },
                 ],
@@ -309,19 +238,14 @@ SECTIONS = [
                     [],
                 ],
                 "notes": [
-                    "[ONLY NGINX IS PUBLIC (bullet 1) + TABLE: Public ports] Our system has a "
-                    "single entry point: Nginx, on ports 80 and 443. All other tools bind to "
-                    "localhost.",
-                    "[LANE: Every external request + TABLE: limits] Every request passes three "
-                    "layers. First, TLS: only versions 1.2 and 1.3, and plain HTTP is redirected. "
-                    "Second, "
-                    "per-IP rate limiting: ten requests per second, and one per second on "
-                    "training, because training is expensive. Third, HTTP Basic "
-                    "authentication in FastAPI, with credentials loaded from Supabase Vault.",
-                    "[6 LIVE TESTS (bullet 3)] Six live tests in CI check these layers. Known "
-                    "limits: a self-signed certificate and one shared credential.",
-                    "[NEXT: JONATHAN] Now Jonathan will show you how we version the data and "
-                    "the model.",
+                    "Now let's talk about security. Nginx is our only entry point, and every "
+                    "other service can only be reached from inside the machine.",
+                    "Every request passes three checks. Nginx encrypts it with TLS, then limits "
+                    "each IP to 10 requests per second, or 1 on train, because training is "
+                    "expensive. Then FastAPI asks for a login.",
+                    "Six live tests in our CI check these layers.",
+                    "And with that, I'll hand over to Jonathan, who'll show you how we version "
+                    "the data and the model.",
                 ],
             },
         ],
@@ -341,11 +265,11 @@ SECTIONS = [
                     {
                         "name": "From source to training run",
                         "steps": [
-                            "Kaggle + Open-Meteo",
+                            ["Kaggle", "Kaggle + Open-Meteo"],
                             "Rolling split",
                             "sha256 manifest",
-                            "DVC snapshot",
-                            "MLflow run",
+                            ["DVC", "DVC snapshot"],
+                            ["MLflow", "MLflow run"],
                         ],
                     },
                 ],
@@ -413,6 +337,7 @@ SECTIONS = [
                 "rows": [
                     {
                         "name": "Each training run, from make train, POST /train or Airflow",
+                        "tool": "MLflow",
                         "cards": [
                             {
                                 "name": "Parameters",
@@ -452,6 +377,7 @@ SECTIONS = [
                     },
                     {
                         "name": "Each evening, the Evidently job on the latest predictions",
+                        "tool": "Evidently",
                         "cards": [
                             {
                                 "name": "Drift",
@@ -583,6 +509,7 @@ SECTIONS = [
                 ],
                 "hub": {
                     "name": "FastAPI asks for a name, not a file",
+                    "tool": "MLflow",
                     "uri": "models:/weather-rainfall-classifier@champion",
                     "note": "It checks the alias on every prediction and reloads only when the "
                     "version changes. Rollback: point the alias back.",
@@ -649,30 +576,40 @@ SECTIONS = [
             {
                 "id": "serving",
                 "title": "Serving the champion",
-                "layout": "flow",
+                "layout": "sequence",
                 "stages": ["serving"],
                 "figure": None,
-                "lanes": [
-                    {
-                        "name": "One prediction",
-                        "steps": [
-                            "Validate input",
-                            "Load champion",
-                            "Predict",
-                            "Answer with model",
-                            "Record metrics",
-                        ],
-                    },
-                ],
+                "lanes": [],
+                # one prediction, as in the wiki (Architecture, "Request path")
+                "sequence": {
+                    "participants": [
+                        ["Streamlit", "Client"],
+                        ["Nginx", "Nginx"],
+                        ["FastAPI", "FastAPI"],
+                        ["MLflow", "MLflow"],
+                        ["Supabase", "Postgres"],
+                    ],
+                    # [from, to, message, "call" or "reply"]
+                    "messages": [
+                        ["Client", "Nginx", "POST /predict, HTTPS", "call"],
+                        ["Nginx", "Nginx", "TLS, rate limit per IP", "call"],
+                        ["Nginx", "FastAPI", "proxy", "call"],
+                        ["FastAPI", "FastAPI", "Basic auth, validate input", "call"],
+                        ["FastAPI", "MLflow", "which version is @champion?", "call"],
+                        ["MLflow", "FastAPI", "champion version", "reply"],
+                        ["FastAPI", "FastAPI", "reload only if the version changed", "call"],
+                        ["FastAPI", "Postgres", "log prediction", "call"],
+                        ["FastAPI", "Client", "rain probability + model version", "reply"],
+                    ],
+                },
                 "points": [
-                    "Four public endpoints, plus /metrics for Prometheus only.",
+                    "Five public endpoints, plus /metrics for Prometheus only.",
                     "Out-of-range values and unknown stations are rejected.",
                     "Every answer names the model that produced it.",
                 ],
                 "facts": [
-                    ["Endpoints", "5"],
+                    ["Endpoints", "5 + /metrics"],
                     ["Rainfall bounds", "0 to 500 mm"],
-                    ["Live weather timeout", "30 s"],
                     ["Stations accepted", "49"],
                 ],
                 "links": [
@@ -681,25 +618,24 @@ SECTIONS = [
                 ],
                 "notes": [
                     "About 1 minute 15 seconds.",
-                    "At startup the API loads its Basic-auth credentials from Supabase Vault.",
-                    "Four public endpoints. Health is open. Predict takes one day of "
-                    "measurements. Live predict takes only a station name. Train retrains.",
-                    "A fifth endpoint, /metrics, is for Prometheus only. Nginx answers 404 "
-                    "from outside; more on that in the monitoring slide.",
-                    "Inputs have bounds, for example rainfall between 0 and 500 mm. Unknown "
-                    "stations are rejected with a suggestion for likely typos.",
-                    "Live predict looks up the station's coordinates, fetches today's "
-                    "weather from Open-Meteo with a 30-second timeout, and returns 502 if "
-                    "the data is not available yet.",
-                    "Train accepts five hyperparameters with bounds, for example depth up "
-                    "to 15. It returns metrics on the training and on the validation data, "
-                    "and clears the prediction cache.",
-                    "Every answer includes the model that served it: name, alias, version, source.",
-                    "Every prediction is also logged to Supabase with its features, result, "
-                    "latency and model. A day later we know the real weather, so we can "
-                    "measure how good the model really was. More on that in monitoring.",
-                    "The API checks the champion alias on each prediction, so a promotion "
-                    "or rollback takes effect without a restart.",
+                    "Let's follow one prediction through the system.",
+                    "The request comes in over HTTPS to Nginx, which handles the encryption and "
+                    "the rate limit, and then hands it to FastAPI.",
+                    "FastAPI checks the login and the input. For example, rainfall has to be "
+                    "between 0 and 500 mm, and an unknown station is rejected, with a suggestion "
+                    "if it looks like a typo.",
+                    "Then it asks MLflow which version is the champion. It only reloads the model"
+                    " when that version changes, so a promotion or a rollback goes live without a"
+                    " restart. And if MLflow is down, it falls back to a local copy of the model.",
+                    "Every prediction is saved in Postgres. A day later we know the real weather,"
+                    " so we can check how good the model really was.",
+                    "And the answer comes back with the chance of rain and the exact model that "
+                    "produced it.",
+                    "Besides predict, there are four other public endpoints: health, live "
+                    "predict, which fetches today's weather from Open-Meteo, train, and the drift"
+                    " simulator we use in the demo.",
+                    "There's also /metrics, but that one is only for Prometheus. From outside, "
+                    "Nginx returns a 404.",
                 ],
             },
             {
@@ -711,11 +647,22 @@ SECTIONS = [
                 "lanes": [
                     {
                         "name": "weather_pipeline, daily at 18:00 Berlin",
-                        "steps": ["Ingest", "Preprocess", "Add outcomes", "Evidently"],
+                        "tool": "Airflow",
+                        "steps": [
+                            ["Open-Meteo", "Ingest"],
+                            "Preprocess",
+                            ["Supabase", "Add outcomes"],
+                            ["Evidently", "Evidently"],
+                        ],
                     },
                     {
                         "name": "weather_retrain, on Grafana alert",
-                        "steps": ["Train", "Validate", "Compare"],
+                        "tool": "Airflow",
+                        "steps": [
+                            ["XGBoost", "Train"],
+                            "Validate",
+                            ["MLflow", "Compare"],
+                        ],
                     },
                 ],
                 "points": [
@@ -766,9 +713,22 @@ SECTIONS = [
                 "lanes": [
                     {
                         "name": "CI, on pushes and pull requests to master",
-                        "steps": ["Lint", "Unit tests", "Build images", "Live gateway tests"],
+                        "tool": "GitHub Actions",
+                        "steps": [
+                            ["Ruff", "Lint"],
+                            ["pytest", "Unit tests"],
+                            ["Docker", "Build images"],
+                            ["Nginx", "Live gateway tests"],
+                        ],
                     },
-                    {"name": "Release, on master", "steps": ["Build", "Push to ghcr.io"]},
+                    {
+                        "name": "Release, on master",
+                        "tool": "GitHub Actions",
+                        "steps": [
+                            ["Docker", "Build"],
+                            ["GitHub", "Push to ghcr.io"],
+                        ],
+                    },
                 ],
                 "points": [],
                 "facts": [
@@ -805,11 +765,23 @@ SECTIONS = [
                 "lanes": [
                     {
                         "name": "Live, every 15 s",
-                        "steps": ["API", "/metrics", "Prometheus", "Grafana"],
+                        "tool": "Prometheus",
+                        "steps": [
+                            ["FastAPI", "API"],
+                            "/metrics",
+                            ["Prometheus", "Prometheus"],
+                            ["Grafana", "Grafana"],
+                        ],
                     },
                     {
                         "name": "Daily, once the real weather is known",
-                        "steps": ["Evidently", "Pushgateway", "Recall alert", "weather_retrain"],
+                        "tool": "Evidently",
+                        "steps": [
+                            ["Evidently", "Evidently"],
+                            ["Prometheus", "Pushgateway"],
+                            ["Grafana", "Recall alert"],
+                            ["Airflow", "weather_retrain"],
+                        ],
                     },
                 ],
                 "points": [

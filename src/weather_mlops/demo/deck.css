@@ -300,6 +300,96 @@
     margin: 0.4rem 0 0;
 }
 
+/* Test days as one bar: dry days in gray, rainy days in rain blue. */
+.split-bar {
+    display: flex;
+    gap: 2px;
+    margin: 1rem 0 0;
+    height: 2.2rem;
+}
+
+.split-part {
+    display: flex;
+    align-items: center;
+    padding: 0 0.8rem;
+    background: #B7C4CE;
+    border-radius: 4px 0 0 4px;
+}
+
+.split-part + .split-part {
+    background: var(--rain);
+    border-radius: 0 4px 4px 0;
+}
+
+.split-label {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--ink);
+    white-space: nowrap;
+}
+
+.split-part + .split-part .split-label {
+    color: #FFFFFF;
+}
+
+/* ROC-AUC scores as bars from 0 to 1; the dashed line is a random guess. */
+.bars {
+    display: grid;
+    gap: 0.55rem;
+}
+
+.bar-row {
+    display: grid;
+    grid-template-columns: 13rem minmax(0, 1fr);
+    align-items: center;
+    gap: 0.8rem;
+}
+
+.bar-label {
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+
+.bar-track {
+    position: relative;
+    display: block;
+    height: 1.5rem;
+}
+
+.bar-track::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: -0.3rem;
+    bottom: -0.3rem;
+    z-index: 1;
+    border-left: 1.5px dashed var(--ink);
+}
+
+/* the score is written inside its bar, so the bar length stays true */
+.bar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    height: 100%;
+    padding-right: 0.5rem;
+    box-sizing: border-box;
+    background: var(--rain);
+    border-radius: 0 4px 4px 0;
+}
+
+.bar-value {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #FFFFFF;
+}
+
+.bar-guess {
+    margin: 0.3rem 0 0 13.8rem;
+    font-size: 0.75rem;
+    color: var(--muted);
+}
+
 /* Pipelines drawn as lanes of steps. */
 .lanes {
     display: grid;
@@ -382,27 +472,27 @@
     margin: 0 0 0.4rem;
 }
 
-.zone-tools {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.3rem 0.9rem;
-    list-style: none;
-    margin: 0 0 0.4rem;
-    padding: 0;
-    font-size: clamp(1.1rem, 1.6vw, 1.4rem);
-    font-weight: 600;
-}
-
-.zone-tools li {
-    margin: 0;
-}
-
-.tool-dot {
+/* Tool logos sit before the name, at the height of the text. */
+.tool-logo {
     display: inline-block;
-    width: 0.65rem;
-    height: 0.65rem;
-    border-radius: 50%;
-    margin-right: 0.4rem;
+    width: 1.1em;
+    height: 1.1em;
+    margin-right: 0.4em;
+    vertical-align: -0.2em;
+}
+
+/* Tools without a logo get their first letter on their brand colour. */
+.tool-mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 3px;
+    color: #FFFFFF;
+    font-size: 0.75em;
+    font-weight: 700;
+    width: 1.45em;
+    height: 1.45em;
+    vertical-align: 0.05em;
 }
 
 .zone-points {
@@ -417,13 +507,120 @@
     margin: 0 0 0.15rem;
 }
 
+/* Diagrams drawn as inline SVG: white boxes, groups of boxes, labelled arrows. */
+.diagram {
+    display: block;
+    width: 100%;
+    height: auto;
+    margin: -0.6rem 0 0.8rem;
+    font-family: "IBM Plex Sans", sans-serif;
+}
+
+.diagram .d-group {
+    fill: #EDF1F4;
+    stroke: var(--line);
+}
+
+.diagram .d-group-name {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    fill: var(--muted);
+}
+
+.diagram .d-node {
+    fill: #FFFFFF;
+    stroke: var(--line);
+}
+
+.diagram .d-text {
+    font-size: 15px;
+    font-weight: 600;
+    fill: var(--ink);
+    dominant-baseline: central;
+}
+
+.diagram .d-sub {
+    font-size: 12px;
+    fill: var(--muted);
+    dominant-baseline: central;
+}
+
+.diagram .d-mark {
+    font-size: 11px;
+    font-weight: 700;
+    fill: #FFFFFF;
+    text-anchor: middle;
+    dominant-baseline: central;
+}
+
+.diagram .d-edge {
+    fill: none;
+    stroke: var(--muted);
+    stroke-width: 1.6;
+}
+
+.diagram .d-edge.is-dashed {
+    stroke-dasharray: 5 4;
+}
+
+.diagram .d-head {
+    fill: var(--muted);
+}
+
+/* labels sit on a halo of paper colour, so lines never run through them */
+.diagram .d-label {
+    font-size: 12.5px;
+    font-weight: 600;
+    fill: var(--ink);
+    paint-order: stroke;
+    stroke: var(--paper);
+    stroke-width: 4px;
+}
+
+.diagram .d-life {
+    stroke: var(--line);
+    stroke-width: 1.5;
+    stroke-dasharray: 4 4;
+}
+
+/* a lit group gets a yellow border on its box, not an outline (Safari skips svg outlines) */
+.diagram g[data-focus] {
+    outline: none !important;
+}
+
+.diagram.is-sequence {
+    margin: -0.8rem 0 1.4rem;
+}
+
 .layout-system .lanes {
-    margin-bottom: 1rem;
+    margin-bottom: 0.35rem;
+}
+
+/* The closed loop stays on one row. */
+.layout-system .lane-steps {
+    flex-wrap: nowrap;
 }
 
 .layout-system .lane-steps li {
-    padding: 0.5rem 0.8rem;
-    font-size: clamp(0.85rem, 1.1vw, 1rem);
+    flex: 1 1 auto;
+    text-align: center;
+    white-space: nowrap;
+    padding: 0.3rem 0.45rem;
+    font-size: 0.85rem;
+}
+
+.layout-system .lane-steps li + li {
+    margin-left: 1.15rem;
+}
+
+.layout-system .lane-steps li + li::before {
+    left: -1.05rem;
+    width: 0.65rem;
+}
+
+.layout-system .lane-steps li + li::after {
+    left: -0.45rem;
 }
 
 .system-caption {
@@ -841,4 +1038,22 @@
     .code-links {
         display: none;
     }
+}
+
+/* Logos inside the steps of a lane. */
+.lane-steps li {
+    white-space: nowrap;
+}
+
+.lane-name .tool-logo {
+    width: 1.2em;
+    height: 1.2em;
+}
+
+.hub-name .tool-logo {
+    width: 1em;
+    height: 1em;
+    padding: 0.12em;
+    background: #FFFFFF;
+    border-radius: 3px;
 }
