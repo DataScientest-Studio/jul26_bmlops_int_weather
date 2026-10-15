@@ -39,6 +39,7 @@ SECTIONS = [
                     ["title"],
                     ["lede"],
                     ["team"],
+                    ["team"],
                 ],
                 "notes": [
                     "Good morning. We're Gabriel, Jonathan, Thomas and Ziad.",
@@ -48,6 +49,7 @@ SECTIONS = [
                     "I'll cover the architecture, the problem, drift and our gateway. After me, "
                     "Jonathan and Thomas walk you through the details, and Ziad ends with a "
                     "live demo.",
+                    "NEXT",
                 ],
             },
             {
@@ -108,7 +110,7 @@ SECTIONS = [
                     "day.",
                     "And that closes the loop. When the real weather comes in and recall falls "
                     "below 0.75, Grafana triggers a retrain.",
-                    "The problem is harder than it looks.",
+                    "NEXT",
                 ],
             },
             {
@@ -142,6 +144,7 @@ SECTIONS = [
                     ["hero", "fact-1", "fact-2"],
                     ["point-1", "fact-4"],
                     ["point-2"],
+                    ["point-2"],
                 ],
                 "notes": [
                     "For each prediction, we take one station on one day, with 20 weather "
@@ -152,6 +155,7 @@ SECTIONS = [
                     "0.87.",
                     "Recall also has to stay above 0.75, because missing a rainy day hurts more"
                     " than a false alarm.",
+                    "NEXT",
                 ],
             },
             {
@@ -185,6 +189,7 @@ SECTIONS = [
                     ["hero"],
                     ["fact-0", "fact-1", "fact-2", "fact-3", "chart-note"],
                     ["point-2"],
+                    ["point-2"],
                 ],
                 "notes": [
                     "Then we asked: what happens when the weather changes? So we took the model"
@@ -194,6 +199,7 @@ SECTIONS = [
                     "And the model suffers: ROC AUC drops from 0.87 to 0.70.",
                     "Retraining on Singapore data helps, from 0.64 up to 0.70.",
                     "But it only wins back part of the loss, and that's why we keep monitoring.",
+                    "NEXT",
                 ],
             },
             {
@@ -236,6 +242,7 @@ SECTIONS = [
                     ["lane-0", "fact-1", "fact-2"],
                     ["point-2"],
                     [],
+                    [],
                 ],
                 "notes": [
                     "Now let's talk about security. Nginx is our only entry point, and every "
@@ -247,6 +254,7 @@ SECTIONS = [
                     "Six live tests in our CI make sure every one of these layers holds.",
                     "That's it from me. Over to Jonathan, who'll show you how we version "
                     "the data and the model.",
+                    "NEXT",
                 ],
             },
         ],
