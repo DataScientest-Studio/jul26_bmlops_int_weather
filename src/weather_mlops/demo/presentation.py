@@ -44,11 +44,10 @@ SECTIONS = [
                     "Good morning. We're Gabriel, Jonathan, Thomas and Ziad.",
                     "We started with a simple question: will it rain tomorrow at a weather "
                     "station in Australia?",
-                    "Training a model for that is the easy part, so today we want to show you "
-                    "everything around it.",
+                    "Today we want to show you everything around the model.",
                     "I'll cover the architecture, the problem, drift and our gateway. After me, "
-                    "Jonathan and Thomas take you through the rest, and Ziad ends with a live "
-                    "demo.",
+                    "Jonathan and Thomas walk you through the details, and Ziad ends with a "
+                    "live demo.",
                 ],
             },
             {
@@ -94,7 +93,7 @@ SECTIONS = [
                 "notes": [
                     "Let's start with the big picture. The whole system runs in Docker Compose.",
                     "It all begins with data: Kaggle's Australian weather history, plus new days "
-                    "from the Open-Meteo API, in the same format.",
+                    "from the Open-Meteo API.",
                     "To keep this running on its own, Airflow runs two pipelines: a daily one, "
                     "and one that retrains the model.",
                     "Every day, the new data, the real outcomes and the drift results go into "
@@ -105,11 +104,11 @@ SECTIONS = [
                     " validation, and a better ROC AUC than the current champion).",
                     "Users reach the champion through Nginx and FastAPI, and every prediction "
                     "they get is saved in Postgres.",
-                    "Once it's live, we keep an eye on it: Prometheus and Grafana watch the API, "
-                    "and Evidently checks for drift every day.",
+                    "Prometheus and Grafana watch the API, and Evidently checks for drift every "
+                    "day.",
                     "And that closes the loop. When the real weather comes in and recall falls "
                     "below 0.75, Grafana triggers a retrain.",
-                    "So why do we need all this? Because the problem is harder than it looks.",
+                    "The problem is harder than it looks.",
                 ],
             },
             {
@@ -148,7 +147,7 @@ SECTIONS = [
                     "For each prediction, we take one station on one day, with 20 weather "
                     "measurements, and return the chance of rain tomorrow.",
                     "The tricky part is that only 23% of days are rainy. In other words, a "
-                    "model that always says no is 77% accurate, and never catches a rainy day.",
+                    "model that always says NO is 77% accurate, and never catches a rainy day.",
                     "So we don't judge on accuracy. We pick models on ROC AUC, and ours scores "
                     "0.87.",
                     "Recall also has to stay above 0.75, because missing a rainy day hurts more"
@@ -241,11 +240,12 @@ SECTIONS = [
                 "notes": [
                     "Now let's talk about security. Nginx is our only entry point, and every "
                     "other service can only be reached from inside the machine.",
-                    "Every request passes three checks. Nginx encrypts it with TLS, then limits "
+                    "Every request passes three checks. Nginx encrypts it with TLS (Transport "
+                    "Layer Security), then limits "
                     "each IP to 10 requests per second, or 1 on train, because training is "
                     "expensive. Then FastAPI asks for a login.",
-                    "Six live tests in our CI check these layers.",
-                    "And with that, I'll hand over to Jonathan, who'll show you how we version "
+                    "Six live tests in our CI make sure every one of these layers holds.",
+                    "That's it from me. Over to Jonathan, who'll show you how we version "
                     "the data and the model.",
                 ],
             },

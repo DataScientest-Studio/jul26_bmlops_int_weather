@@ -75,6 +75,58 @@ if (!window.__deckShortcuts) {
 }
 </script>
 """
+# talk clock for the notes window only: c starts it, c again pauses it, r resets it.
+# it hangs on the page body, so the notes redrawing every second does not reset it
+NOTES_CLOCK = """
+<script>
+if (!window.__talkClock) {
+  window.__talkClock = { elapsed: 0, startedAt: null };
+  const clock = window.__talkClock;
+  const box = document.createElement("div");
+  box.id = "talk-clock";
+  box.style.cssText = "position: fixed; top: 0.8rem; right: 1.2rem; z-index: 1000;"
+    + " font-family: 'IBM Plex Mono', monospace; font-size: 2rem; font-weight: 700;"
+    + " padding: 0.2rem 0.8rem; border-radius: 6px; background: #0E1117;"
+    + " border: 2px solid #F5B700;";
+  document.body.appendChild(box);
+  const show = () => {
+    let total = clock.elapsed;
+    if (clock.startedAt !== null) total = total + Date.now() - clock.startedAt;
+    const seconds = Math.floor(total / 1000);
+    const minutes = String(Math.floor(seconds / 60)).padStart(2, "0");
+    const rest = String(seconds % 60).padStart(2, "0");
+    if (clock.startedAt === null) {
+      box.style.color = "#8B98A5";
+      box.textContent = minutes + ":" + rest + (total === 0 ? " · press C" : " · paused");
+    } else {
+      box.style.color = "#F5B700";
+      box.textContent = minutes + ":" + rest;
+    }
+  };
+  document.addEventListener("keydown", (event) => {
+    const target = event.target;
+    const fields = ["INPUT", "TEXTAREA", "SELECT"];
+    const typing = target.isContentEditable || fields.includes(target.tagName);
+    if (typing || event.metaKey || event.ctrlKey || event.altKey) return;
+    const key = event.key.toLowerCase();
+    if (key === "r") {
+      clock.elapsed = 0;
+      clock.startedAt = null;
+    } else if (key !== "c") {
+      return;
+    } else if (clock.startedAt === null) {
+      clock.startedAt = Date.now();
+    } else {
+      clock.elapsed = clock.elapsed + Date.now() - clock.startedAt;
+      clock.startedAt = null;
+    }
+    show();
+  });
+  show();
+  setInterval(show, 250);
+}
+</script>
+"""
 DEFAULT_API_URL = os.environ.get("DEMO_API_URL", "https://nginx")
 GRAFANA_API_URL = os.environ.get(
     "GRAFANA_API_URL", "http://127.0.0.1:3000/d/weather-api/weather-api"
@@ -724,7 +776,8 @@ def _follow_deck():
     st.caption(
         "Keys work in this window and on the deck: N or → next, P or ← previous, "
         "J or ↓ highlight the next point, K or ↑ the previous one, "
-        "S on the deck reopens these notes."
+        "S on the deck reopens these notes. "
+        "C here starts the talk clock, C again pauses it, R resets it."
     )
 
 
@@ -732,6 +785,7 @@ def _render_notes():
     # open ?view=notes in a window you do not share
     st.markdown(f"<style>{NOTES_STYLES}</style>", unsafe_allow_html=True)
     st.html(DECK_SHORTCUTS, unsafe_allow_javascript=True)
+    st.html(NOTES_CLOCK, unsafe_allow_javascript=True)
     _follow_deck()
 
 
