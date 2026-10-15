@@ -42,9 +42,9 @@ SECTIONS = [
                 ],
                 "notes": [
                     "Good morning. We're Gabriel, Jonathan, Thomas and Ziad.",
-                    "We started with a simple question: will it rain tomorrow at a weather "
-                    "station in Australia?",
-                    "Today we want to show you everything around the model.",
+                    "The goal of this work was to predict whether it will rain tomorrow at a "
+                    "weather station in Australia.",
+                    "And then to build the MLOps architecture around that model.",
                     "I'll cover the architecture, the problem, drift and our gateway. After me, "
                     "Jonathan and Thomas walk you through the details, and Ziad ends with a "
                     "live demo.",
