@@ -42,7 +42,7 @@ SECTIONS = [
                     ["team"],
                 ],
                 "notes": [
-                    "Good morning. We're Gabriel, Jonathan, Thomas and Ziad.",
+                    "Good afternoon. We're Gabriel, Jonathan, Thomas and Ziad.",
                     "The goal of this work was to predict whether it will rain tomorrow at a "
                     "weather station in Australia.",
                     "And then to build the MLOps architecture around that model.",

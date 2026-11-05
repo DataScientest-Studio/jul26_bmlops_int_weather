@@ -1,0 +1,820 @@
+1
+00:00:02,480 --> 00:00:07,260
+Good afternoon. We are Gabriel, Jonathan, Thomas and Ziad.
+
+2
+00:00:07,760 --> 00:00:11,030
+We started this work with a simple question:
+
+3
+00:00:11,080 --> 00:00:15,460
+will it rain tomorrow at a weather station in Australia?
+
+4
+00:00:15,980 --> 00:00:21,210
+Training a model for that is the easy part, so today we want to show you
+
+5
+00:00:21,260 --> 00:00:23,460
+everything around it.
+
+6
+00:00:23,560 --> 00:00:27,550
+I will cover the architecture and the problem, talk a little about drift
+
+7
+00:00:27,600 --> 00:00:29,450
+and also our gateway.
+
+8
+00:00:29,500 --> 00:00:35,330
+After me, Jonathan and Thomas take you through the rest, and Ziad ends
+
+9
+00:00:35,380 --> 00:00:39,760
+with a live demonstration of our system.
+
+10
+00:00:41,060 --> 00:00:43,700
+Let's start with the big picture.
+
+11
+00:00:43,900 --> 00:00:47,410
+The whole system runs in Docker Compose.
+
+12
+00:00:47,460 --> 00:00:53,210
+It all begins with data: the Kaggle
+
+13
+00:00:53,260 --> 00:00:59,740
+Australian weather history, plus new days from the Open-Meteo API.
+
+14
+00:01:00,180 --> 00:01:06,660
+They are in the same format, so we use both of them.
+
+15
+00:01:07,180 --> 00:01:12,650
+To keep the system running on its own, we use Airflow,
+
+16
+00:01:12,700 --> 00:01:18,370
+which runs two pipelines: a daily one, and one that retrains
+
+17
+00:01:18,420 --> 00:01:22,160
+the model whenever required.
+
+18
+00:01:22,720 --> 00:01:28,470
+The data lives in Supabase Postgres, dataset versions in DVC, and all the
+
+19
+00:01:28,520 --> 00:01:30,980
+secrets in Supabase Vault.
+
+20
+00:01:31,560 --> 00:01:33,040
+When we train,
+
+21
+00:01:33,300 --> 00:01:39,230
+MLflow records the run, and a new model only becomes champion if it
+
+22
+00:01:39,280 --> 00:01:41,550
+passes our quality gate.
+
+23
+00:01:41,600 --> 00:01:46,830
+Users reach the champion through
+
+24
+00:01:46,880 --> 00:01:52,370
+Nginx and FastAPI, and a new champion goes live
+
+25
+00:01:52,420 --> 00:01:56,680
+without the need to restart the system.
+
+26
+00:01:57,220 --> 00:01:59,970
+Once it's live, we keep watching it.
+
+27
+00:02:00,020 --> 00:02:05,500
+We use Grafana for the API, and Evidently for drift.
+
+28
+00:02:05,900 --> 00:02:11,330
+What closes the loop at the bottom: when the real
+
+29
+00:02:11,380 --> 00:02:18,260
+weather comes in and recall falls below 0.75,
+
+30
+00:02:18,760 --> 00:02:23,160
+Grafana triggers a retrain of the model.
+
+31
+00:02:24,000 --> 00:02:27,910
+So why do we need all this?
+
+32
+00:02:27,960 --> 00:02:33,170
+Because the problem is harder than it looks.
+
+33
+00:02:33,220 --> 00:02:42,360
+For each prediction, we take one station on one day, with 20 weather
+
+34
+00:02:42,410 --> 00:02:49,310
+measurements, and we return the chance of rain tomorrow.
+
+35
+00:02:49,630 --> 00:02:53,480
+The tricky part is that only 23% of days are rainy.
+
+36
+00:02:53,530 --> 00:02:58,930
+In other words, a model that always says no
+
+37
+00:02:59,650 --> 00:03:06,030
+is 77% accurate, and never catches a rainy day.
+
+38
+00:03:06,250 --> 00:03:10,300
+So we don't judge on accuracy.
+
+39
+00:03:10,350 --> 00:03:18,610
+We pick the model on ROC AUC, and ours scores 0.87.
+
+40
+00:03:19,930 --> 00:03:25,540
+Recall also has to stay above 0.75, because
+
+41
+00:03:25,590 --> 00:03:31,310
+missing a rainy day hurts more than a false alarm.
+
+42
+00:03:33,250 --> 00:03:38,510
+Then we asked: what happens when the weather changes?
+
+43
+00:03:38,670 --> 00:03:44,580
+So we took the model to Singapore, which is much rainier but has
+
+44
+00:03:44,630 --> 00:03:46,470
+the same data format.
+
+45
+00:03:46,970 --> 00:03:52,560
+It rains there on 83% of days, and Evidently
+
+46
+00:03:52,610 --> 00:03:56,070
+flags all five features we monitor.
+
+47
+00:03:57,110 --> 00:04:00,690
+The model suffers.
+
+48
+00:04:01,210 --> 00:04:07,590
+ROC AUC drops from 0.87 to 0.70.
+
+49
+00:04:09,230 --> 00:04:17,650
+Retraining on Singapore data helps, from 0.64 up to 0.70,
+
+50
+00:04:18,290 --> 00:04:22,350
+but it only wins back part of the loss.
+
+51
+00:04:23,010 --> 00:04:29,310
+That's why we need to keep monitoring the system.
+
+52
+00:04:30,170 --> 00:04:35,040
+One last piece concerns security.
+
+53
+00:04:35,090 --> 00:04:38,190
+Nginx is the only way in.
+
+54
+00:04:38,410 --> 00:04:43,610
+Every other service only listens inside the machine.
+
+55
+00:04:47,490 --> 00:04:53,760
+Each request passes three checks: TLS,
+
+56
+00:04:53,810 --> 00:04:58,430
+a rate limit per IP address, and a login in FastAPI.
+
+57
+00:04:59,090 --> 00:05:05,470
+Six live tests in our CI check these layers.
+
+58
+00:05:06,830 --> 00:05:12,460
+And with that, I will hand over to Jonathan, who will show you how we version
+
+59
+00:05:12,510 --> 00:05:15,810
+the data and the model.
+
+60
+00:05:16,110 --> 00:05:18,550
+Jonathan, over to you.
+
+61
+00:05:19,290 --> 00:05:22,830
+Looking at the data, we have two different sources.
+
+62
+00:05:23,110 --> 00:05:29,020
+On the one hand, we have Kaggle, which gives us 145,000 rows for
+
+63
+00:05:29,070 --> 00:05:33,250
+49 weather stations, covering 2007 to 2017.
+
+64
+00:05:34,010 --> 00:05:39,640
+On the other hand, we have Open-Meteo, whose API lets us get data from more
+
+65
+00:05:39,690 --> 00:05:42,790
+recent years, and even from today.
+
+66
+00:05:43,370 --> 00:05:45,160
+It gives us the same 23 columns,
+
+67
+00:05:45,210 --> 00:05:50,260
+so it's really convenient.
+
+68
+00:05:50,310 --> 00:05:52,950
+We can merge everything into one big dataset.
+
+69
+00:05:53,470 --> 00:05:57,440
+We then preprocess it and split it by date, because we are of course
+
+70
+00:05:57,490 --> 00:05:59,620
+working with predictions for the future.
+
+71
+00:05:59,670 --> 00:06:03,530
+We don't want data leakage from the future into the past.
+
+72
+00:06:04,530 --> 00:06:09,810
+Every dataset that is generated gets its own unique identifier,
+
+73
+00:06:10,270 --> 00:06:14,350
+so we get a manifest with a SHA-256 of each file.
+
+74
+00:06:15,130 --> 00:06:20,290
+Data versioning then happens in DVC.
+
+75
+00:06:22,300 --> 00:06:27,600
+Which dataset is currently in use is also passed to MLflow,
+
+76
+00:06:28,060 --> 00:06:30,160
+so that we are able to reproduce it.
+
+77
+00:06:33,500 --> 00:06:37,920
+Looking in more detail at what MLflow is actually tracking:
+
+78
+00:06:38,560 --> 00:06:40,700
+we have two experiments set up.
+
+79
+00:06:41,240 --> 00:06:45,140
+The first one tracks each training run:
+
+80
+00:06:45,940 --> 00:06:50,080
+which settings were used for XGBoost,
+
+81
+00:06:50,200 --> 00:06:53,620
+the number of trees, the depth, the learning rate,
+
+82
+00:06:55,260 --> 00:06:59,280
+which training rows and class weights were used,
+
+83
+00:06:59,380 --> 00:07:01,490
+then how the model actually performs:
+
+84
+00:07:01,540 --> 00:07:05,160
+the ROC AUC, the recall, the precision,
+
+85
+00:07:07,080 --> 00:07:11,080
+and which data and which code were used,
+
+86
+00:07:11,500 --> 00:07:15,640
+because then we can really reproduce everything.
+
+87
+00:07:16,340 --> 00:07:19,260
+The artifacts: the model itself,
+
+88
+00:07:19,440 --> 00:07:23,150
+the dataset manifest, and a JSON file that ties everything together,
+
+89
+00:07:23,200 --> 00:07:25,300
+so it's reproducible.
+
+90
+00:07:27,340 --> 00:07:32,930
+The second experiment we have is run
+
+91
+00:07:32,980 --> 00:07:37,960
+every day, and it shows the Evidently report.
+
+92
+00:07:38,300 --> 00:07:41,060
+So it's for drift detection.
+
+93
+00:07:43,400 --> 00:07:49,010
+Thomas will explain more about these runs later, when he presents
+
+94
+00:07:49,060 --> 00:07:52,020
+Airflow, so I won't go into more detail here.
+
+95
+00:07:54,380 --> 00:07:58,880
+Looking at the models in more detail:
+
+96
+00:07:59,120 --> 00:08:03,840
+we start with a baseline model, which is the champion.
+
+97
+00:08:04,760 --> 00:08:07,900
+If a new model is generated,
+
+98
+00:08:08,260 --> 00:08:13,730
+we look at three criteria to know if it can replace the current champion,
+
+99
+00:08:13,780 --> 00:08:15,620
+or if it's not better.
+
+100
+00:08:17,240 --> 00:08:19,310
+The first requirement is that everything is there,
+
+101
+00:08:19,360 --> 00:08:20,560
+everything is clean:
+
+102
+00:08:21,080 --> 00:08:22,980
+all the files are in MLflow,
+
+103
+00:08:23,620 --> 00:08:26,060
+so everything is reproducible.
+
+104
+00:08:27,060 --> 00:08:31,760
+Then, the validation recall needs to be higher than 0.75.
+
+105
+00:08:32,640 --> 00:08:36,350
+And the validation ROC AUC has to beat the champion.
+
+106
+00:08:36,400 --> 00:08:41,880
+If those criteria are met, it can become champion.
+
+107
+00:08:42,100 --> 00:08:44,480
+So the champion is not necessarily the newest model.
+
+108
+00:08:44,560 --> 00:08:46,660
+It's the model that performs best.
+
+109
+00:08:49,000 --> 00:08:53,420
+FastAPI, which Thomas will also explain later,
+
+110
+00:08:54,320 --> 00:09:00,520
+asks which model is currently the champion, and then serves that model.
+
+111
+00:09:02,950 --> 00:09:05,200
+Thomas will explain more about this now,
+
+112
+00:09:05,250 --> 00:09:08,350
+so I'll hand over to him.
+
+113
+00:09:09,130 --> 00:09:13,400
+We built an API that loads its Basic authentication credentials from
+
+114
+00:09:13,450 --> 00:09:17,240
+Supabase Vault. We have four public endpoints.
+
+115
+00:09:17,290 --> 00:09:21,140
+Health is open, then predict takes one day of measurements,
+
+116
+00:09:21,190 --> 00:09:24,600
+and live predict takes only a station name and predicts whether it's going
+
+117
+00:09:24,650 --> 00:09:28,380
+to rain or not. The train endpoint retrains the model.
+
+118
+00:09:28,430 --> 00:09:32,040
+We also have a fifth endpoint, the metrics endpoint.
+
+119
+00:09:32,090 --> 00:09:37,460
+It's for Prometheus only, and Nginx answers with a 404 from outside,
+
+120
+00:09:37,510 --> 00:09:38,830
+but more on that later.
+
+121
+00:09:39,570 --> 00:09:41,290
+We have input bounds.
+
+122
+00:09:41,630 --> 00:09:46,690
+For example, rainfall has to be between 0 and 500 millimeters,
+
+123
+00:09:47,050 --> 00:09:50,300
+and unknown stations are rejected with a suggestion for likely typos.
+
+124
+00:09:50,350 --> 00:09:54,300
+Live predict looks up the station's coordinates,
+
+125
+00:09:54,350 --> 00:09:59,280
+fetches today's weather from Open-Meteo with a 30-second timeout, and returns a
+
+126
+00:09:59,330 --> 00:10:02,490
+502 if the data is not available yet.
+
+127
+00:10:02,790 --> 00:10:05,980
+Train accepts five hyperparameters with bounds,
+
+128
+00:10:06,030 --> 00:10:11,700
+for example a depth of up to 15, and returns metrics on the training and
+
+129
+00:10:11,750 --> 00:10:14,630
+validation data, and clears the prediction cache.
+
+130
+00:10:15,170 --> 00:10:17,620
+Every answer includes the model that served it:
+
+131
+00:10:17,670 --> 00:10:20,350
+its name, alias, version and source.
+
+132
+00:10:20,730 --> 00:10:24,380
+Every prediction is also logged to Supabase with its features,
+
+133
+00:10:24,430 --> 00:10:27,680
+result, latency and model.
+
+134
+00:10:27,730 --> 00:10:30,310
+Later, when we know the real weather,
+
+135
+00:10:30,690 --> 00:10:35,040
+we can measure how good the model really was, but more on that in
+
+136
+00:10:35,090 --> 00:10:39,160
+monitoring. The API checks the champion alias on each prediction,
+
+137
+00:10:39,210 --> 00:10:42,950
+so a promotion or rollback takes effect without a restart.
+
+138
+00:10:44,030 --> 00:10:45,880
+We have two DAGs.
+
+139
+00:10:45,930 --> 00:10:50,640
+The weather pipeline runs every day at 18:00 Berlin time.
+
+140
+00:10:50,690 --> 00:10:56,640
+It fetches new weather data, cleans it, adds the real outcome to past
+
+141
+00:10:56,690 --> 00:10:59,540
+predictions, and runs the Evidently monitoring job.
+
+142
+00:10:59,590 --> 00:11:03,730
+Then we have the weather retrain DAG, which has no schedule.
+
+143
+00:11:03,910 --> 00:11:07,280
+It trains, validates and compares with the champion.
+
+144
+00:11:07,330 --> 00:11:12,920
+Grafana starts it through the Airflow REST API when the real recall drops.
+
+145
+00:11:12,970 --> 00:11:17,070
+For this, the Airflow web server joins our Docker network.
+
+146
+00:11:17,750 --> 00:11:20,550
+So why do we split those tasks?
+
+147
+00:11:20,750 --> 00:11:22,990
+Checking is cheap, but training is not,
+
+148
+00:11:23,070 --> 00:11:27,610
+and retraining on a fixed schedule would train even when nothing is wrong.
+
+149
+00:11:27,950 --> 00:11:33,440
+Each task is a DockerOperator that runs on our images, and containers are
+
+150
+00:11:33,490 --> 00:11:35,140
+removed after each task.
+
+151
+00:11:35,190 --> 00:11:40,860
+The train task calls POST /train through Nginx, like
+
+152
+00:11:40,910 --> 00:11:43,410
+any client, so the stack must be up.
+
+153
+00:11:43,850 --> 00:11:49,040
+Airflow reaches Docker through a socket proxy that allows containers, images
+
+154
+00:11:49,090 --> 00:11:53,230
+and POST calls, and denies network management for safety.
+
+155
+00:11:53,710 --> 00:11:58,190
+Each task retries up to three times, one minute apart.
+
+156
+00:11:58,350 --> 00:12:01,200
+If Airflow was down, it catches up every missed day,
+
+157
+00:12:01,250 --> 00:12:05,900
+one run at a time, and each run fetches the weather of its own day.
+
+158
+00:12:05,950 --> 00:12:09,240
+For the days that were already missing,
+
+159
+00:12:09,290 --> 00:12:11,370
+we ran a one-time backfill.
+
+160
+00:12:11,930 --> 00:12:17,160
+A retrained model only becomes champion if it passes the recall gate and beats
+
+161
+00:12:17,210 --> 00:12:18,530
+the current champion.
+
+162
+00:12:19,830 --> 00:12:22,390
+We also built continuous integration and delivery.
+
+163
+00:12:22,990 --> 00:12:25,820
+The first line is our continuous integration.
+
+164
+00:12:25,870 --> 00:12:29,140
+CI runs on every push and pull request to master, in two jobs.
+
+165
+00:12:29,190 --> 00:12:34,440
+Job 1 is Ruff linting and a format check, then the unit tests.
+
+166
+00:12:34,490 --> 00:12:39,620
+Job 2, in Docker, builds all seven images, starts the API and Nginx, and runs
+
+167
+00:12:39,670 --> 00:12:41,960
+the live gateway tests against them.
+
+168
+00:12:42,010 --> 00:12:43,810
+The second line is our release.
+
+169
+00:12:44,190 --> 00:12:48,100
+Every time code lands on master, GitHub builds our ingestion,
+
+170
+00:12:48,150 --> 00:12:53,930
+preprocess and API images, and uploads them to the GitHub Container Registry.
+
+171
+00:12:54,090 --> 00:12:59,030
+Any server can then download and start them without building them itself.
+
+172
+00:13:00,270 --> 00:13:05,640
+For monitoring, we use Prometheus and Grafana, and we have two kinds of
+
+173
+00:13:05,690 --> 00:13:09,700
+monitoring: live monitoring from the API, and the daily batch check.
+
+174
+00:13:09,750 --> 00:13:13,040
+First, let's talk about the live monitoring.
+
+175
+00:13:13,090 --> 00:13:14,930
+The API measures itself.
+
+176
+00:13:15,070 --> 00:13:18,960
+Every request is counted by endpoint and status, and timed.
+
+177
+00:13:19,010 --> 00:13:24,260
+On top, live predictions record the station, rain or no rain, the probability and the
+
+178
+00:13:24,310 --> 00:13:27,650
+model that answered. Training records the validation metrics.
+
+179
+00:13:28,030 --> 00:13:31,420
+All of it is on the metrics endpoint.
+
+180
+00:13:31,470 --> 00:13:36,860
+As I said before, Nginx blocks it from outside, and Prometheus reads it
+
+181
+00:13:36,910 --> 00:13:40,560
+inside the Docker network every 15 seconds.
+
+182
+00:13:40,610 --> 00:13:45,000
+Once a day, when the real weather is known, an Evidently job runs two checks.
+
+183
+00:13:45,050 --> 00:13:49,910
+First, it checks whether the inputs have changed compared to the training data.
+
+184
+00:13:50,130 --> 00:13:54,460
+We call this feature drift, and it only raises a warning, because changed inputs
+
+185
+00:13:54,510 --> 00:13:57,030
+do not prove the model got worse.
+
+186
+00:13:57,110 --> 00:14:00,070
+Second, it checks whether the model was actually right.
+
+187
+00:14:00,330 --> 00:14:04,480
+As soon as at least 30 predictions have a known outcome,
+
+188
+00:14:04,530 --> 00:14:06,710
+it computes the real recall.
+
+189
+00:14:06,790 --> 00:14:11,610
+If recall is below 0.75, it requests a retrain.
+
+190
+00:14:12,230 --> 00:14:15,280
+Evidently is a batch job that ends after a few seconds,
+
+191
+00:14:15,330 --> 00:14:19,380
+so Prometheus cannot scrape it. It pushes its numbers to a Pushgateway
+
+192
+00:14:19,430 --> 00:14:22,110
+instead, and Prometheus reads them from there.
+
+193
+00:14:22,730 --> 00:14:27,240
+Grafana turns the retrain request into an alert and calls Airflow through a
+
+194
+00:14:27,290 --> 00:14:32,270
+webhook, at most once a day, and that starts the weather retrain DAG.
+
+195
+00:14:32,490 --> 00:14:33,640
+We have seven alerts.
+
+196
+00:14:33,690 --> 00:14:38,300
+For the API: API down, more than 10% server errors, and
+
+197
+00:14:38,350 --> 00:14:42,260
+average latency above 5 seconds. For the model:
+
+198
+00:14:42,310 --> 00:14:48,100
+a retrain request, last training below ROC AUC 0.866 or recall
+
+199
+00:14:48,150 --> 00:14:53,310
+under 0.75, and an unusual rain rate.
+
+200
+00:14:53,890 --> 00:14:58,780
+Only the retrain request starts training. The others are warnings for a
+
+201
+00:14:58,830 --> 00:15:02,230
+person, for now only visible in Grafana.
+
+202
+00:15:02,470 --> 00:15:05,220
+Our dashboards and alerts are not clicked together by hand.
+
+203
+00:15:05,270 --> 00:15:07,740
+They are stored as files in Git,
+
+204
+00:15:07,790 --> 00:15:12,540
+so anyone on the team can rebuild the same monitoring with one command.
+
+205
+00:15:12,590 --> 00:15:15,630
+Now I will hand over to Ziad.
+

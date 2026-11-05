@@ -1,0 +1,30 @@
+{
+  "files": {
+    "78158": {
+      "date": "2026-07-28",
+      "filename": "20260728_jul26-bmlops-int-pedagogical-kick-off-project_1459_CET.md",
+      "layout": "jul26",
+      "subdir": "meetings/internal_meetings",
+      "title": "JUL26 BMLOPS INT - Pedagogical Kick off & Project\u2026"
+    },
+    "81670": {
+      "date": "2026-10-02",
+      "filename": "20261002_jul26-bmlops-int-weather_1101_CET.md",
+      "layout": "jul26",
+      "subdir": "meetings/internal_meetings",
+      "title": "jul26_bmlops_int_weather"
+    },
+    "82419": {
+      "date": "2026-10-15",
+      "filename": "20261015_defense-jul26-bmlops-int_1359_CET.md",
+      "layout": "jul26",
+      "subdir": "meetings/internal_meetings",
+      "title": "Defense - JUL26 BMLOPS INT"
+    }
+  },
+  "pulled_ids": [
+    "78158",
+    "81670",
+    "82419"
+  ]
+}
